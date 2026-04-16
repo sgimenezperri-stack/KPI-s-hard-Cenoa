@@ -28,6 +28,11 @@ def load_data():
         df_rotacion = pd.read_excel(url, sheet_name=nombre_rot)
         df_bajas = pd.read_excel(url, sheet_name=nombre_baj)
         
+        # SOLUCIÓN DEL ERROR: Forzamos a que todos los encabezados sean texto
+        df_dotacion.columns = df_dotacion.columns.astype(str)
+        df_rotacion.columns = df_rotacion.columns.astype(str)
+        df_bajas.columns = df_bajas.columns.astype(str)
+        
         return df_dotacion, df_rotacion, df_bajas
     except Exception as e:
         st.error(f"Error de conexión: {e}")
@@ -41,6 +46,8 @@ if not df_dot.empty:
     
     # Búsqueda de columnas dinámicas para evitar errores
     cols_dot = [c.lower() for c in df_dot.columns]
+    
+    # Detectamos la columna de Año y Unidad dinámicamente
     año_col = df_dot.columns[cols_dot.index(next(c for c in cols_dot if 'año' in c or 'anio' in c))] if any('año' in c or 'anio' in c for c in cols_dot) else None
     un_col = df_dot.columns[cols_dot.index(next(c for c in cols_dot if 'unidad' in c or 'sucursal' in c))] if any('unidad' in c or 'sucursal' in c for c in cols_dot) else None
     
