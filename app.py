@@ -18,7 +18,7 @@ st.markdown("""
 def load_and_transform_dotacion():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQhx1mzO6cExRA4rtOkPx3t7CU1Ubvy0GVegOZpKv2KYe8E3vf6Z-Vb6y4xYjlLdg/pub?output=xlsx"
     try:
-        # 1. Búsqueda flexible de la solapa para evitar errores de nombre
+        # Búsqueda flexible de la solapa
         xls = pd.ExcelFile(url)
         nombres_solapas = xls.sheet_names
         nombre_dot = next((s for s in nombres_solapas if 'DOTACION' in s.upper()), None)
@@ -27,29 +27,42 @@ def load_and_transform_dotacion():
             st.error(f"Falta solapa de Dotación. Solapas leídas: {nombres_solapas}")
             return pd.DataFrame()
 
-        # 2. Cargar solo la hoja encontrada
         df_raw = pd.read_excel(url, sheet_name=nombre_dot)
         
-        # Limpieza inicial: Forzar nombres de columnas a string y limpiar espacios
+        # Limpieza inicial: Forzar nombres de columnas a string en mayúsculas
         df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
         
-        # Eliminar filas vacías o de separación (basado en que la columna A debe tener el año)
+        # Eliminar filas vacías
         df_raw = df_raw.dropna(subset=[df_raw.columns[0]]) 
         
-        # Renombrar las primeras 3 columnas para asegurar consistencia
         df_raw = df_raw.rename(columns={
             df_raw.columns[0]: 'AÑO',
             df_raw.columns[1]: 'EMPRESA',
             df_raw.columns[2]: 'LOCALIDAD'
         })
         
-        # Seleccionar columnas: Mantener AÑO, EMPRESA, LOCALIDAD y MES FINAL (con guion)
         columnas_base = ['AÑO', 'EMPRESA', 'LOCALIDAD']
-        columnas_meses = [c for c in df_raw.columns if re.search(r'-', c) and 'PROMEDIO' not in c]
+        
+        # --- NUEVA LÓGICA DE FILTRADO DE MESES ---
+        columnas_meses = []
+        for c in df_raw.columns:
+            # Debe tener un guion y no ser el promedio
+            if '-' in c and 'PROMEDIO' not in c:
+                
+                # REGLA 1: Descartar si empieza con "1-" o "01-" (Ej: 1-10, 01-10)
+                if c.startswith('1-') or c.startswith('01-'):
+                    continue
+                    
+                # REGLA 2: Descartar si Pandas lo convirtió a fecha y es el día 01 (Ej: 2025-10-01 00:00:00)
+                if '-01 00:' in c:
+                    continue
+                
+                # Si sobrevive a los filtros, es el final del periodo. Lo guardamos.
+                columnas_meses.append(c)
         
         df_filtrado = df_raw[columnas_base + columnas_meses].copy()
         
-        # Transformar (Unpivot): Pasar de columnas de meses a filas
+        # Transformar (Unpivot)
         df_melted = pd.melt(
             df_filtrado, 
             id_vars=columnas_base, 
@@ -57,10 +70,12 @@ def load_and_transform_dotacion():
             value_name='HEADCOUNT'
         )
         
-        # Limpieza final de datos
         df_melted['AÑO'] = pd.to_numeric(df_melted['AÑO'], errors='coerce')
         df_melted['HEADCOUNT'] = pd.to_numeric(df_melted['HEADCOUNT'], errors='coerce').fillna(0)
         df_melted = df_melted.dropna(subset=['AÑO'])
+        
+        # Limpiar visualmente el nombre del mes si Pandas lo convirtió a fecha larga
+        df_melted['MES_PERIODO'] = df_melted['MES_PERIODO'].apply(lambda x: x.split(' ')[0] if ' 00:00:00' in x else x)
         
         return df_melted
 
@@ -85,20 +100,17 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Filtros Globales")
 
 if not df_dot.empty:
-    # Filtros para Dotación
     anios_disponibles = sorted(df_dot['AÑO'].unique())
     selected_anio = st.sidebar.multiselect("Año", options=anios_disponibles, default=anios_disponibles)
     
     empresas_disponibles = sorted(df_dot['EMPRESA'].astype(str).unique())
     selected_empresa = st.sidebar.multiselect("Empresa", options=empresas_disponibles, default=empresas_disponibles)
     
-    # Aplicar filtros al DataFrame
     df_dot_filtered = df_dot[
         (df_dot['AÑO'].isin(selected_anio)) & 
         (df_dot['EMPRESA'].isin(selected_empresa))
     ]
     
-    # Extraer lista de meses únicos basados en el filtro para usarlos en selectores
     meses_disponibles = df_dot_filtered['MES_PERIODO'].unique()
 
 # 5. Renderizado de la Sección Dotación
@@ -106,25 +118,19 @@ if "Dotación" in categoria:
     st.header("📋 Gestión de Dotación")
     
     if not df_dot.empty:
-        # --- Selector de Mes de Análisis ---
         st.markdown("### Seleccione el Mes de Análisis")
-        # Por defecto, seleccionamos el último mes disponible en los datos
         mes_seleccionado = st.selectbox("Mes", options=meses_disponibles, index=len(meses_disponibles)-1)
         
-        # Filtramos los datos solo para el mes seleccionado para los KPIs estáticos
         df_mes_actual = df_dot_filtered[df_dot_filtered['MES_PERIODO'] == mes_seleccionado]
         
-        # --- KPIs ---
         c1, c2, c3 = st.columns(3)
         total_headcount = df_mes_actual['HEADCOUNT'].sum()
         c1.metric("Headcount Total (Mes Seleccionado)", f"{total_headcount:,.0f}")
         
-        # --- Gráficos ---
         st.markdown("---")
         colA, colB = st.columns(2)
         
         with colA:
-            # Gráfico de Torta: Distribución por Empresa (Solo del mes seleccionado)
             if total_headcount > 0:
                 fig_empresa = px.pie(
                     df_mes_actual, 
@@ -138,10 +144,9 @@ if "Dotación" in categoria:
                 st.info(f"No hay headcount registrado para {mes_seleccionado}.")
                 
         with colB:
-            # Gráfico de Barras: Top Localidades (Solo del mes seleccionado)
             if total_headcount > 0:
                 df_loc = df_mes_actual.groupby('LOCALIDAD')['HEADCOUNT'].sum().reset_index()
-                df_loc = df_loc.sort_values(by='HEADCOUNT', ascending=True) # Para barras horizontales
+                df_loc = df_loc.sort_values(by='HEADCOUNT', ascending=True) 
                 fig_loc = px.bar(
                     df_loc, 
                     x='HEADCOUNT', 
@@ -151,10 +156,8 @@ if "Dotación" in categoria:
                 )
                 st.plotly_chart(fig_loc, use_container_width=True)
 
-        # --- Gráfico de Tendencia Histórica ---
         st.markdown("---")
         st.markdown("### Evolución Histórica")
-        # Para la tendencia, usamos todos los meses (df_dot_filtered), no solo el seleccionado
         df_tendencia = df_dot_filtered.groupby(['MES_PERIODO', 'AÑO'], sort=False)['HEADCOUNT'].sum().reset_index()
         fig_trend = px.line(
             df_tendencia, 
@@ -165,8 +168,7 @@ if "Dotación" in categoria:
         )
         st.plotly_chart(fig_trend, use_container_width=True)
         
-        # --- Tabla de Datos ---
-        with st.expander("Ver Datos de Origen Transformados (Melted)"):
+        with st.expander("Auditoría de Datos: Ver tabla procesada"):
             st.dataframe(df_dot_filtered)
             
     else:
