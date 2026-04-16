@@ -18,32 +18,38 @@ st.markdown("""
 def load_and_transform_dotacion():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQhx1mzO6cExRA4rtOkPx3t7CU1Ubvy0GVegOZpKv2KYe8E3vf6Z-Vb6y4xYjlLdg/pub?output=xlsx"
     try:
-        # Cargar solo la hoja de Dotación
-        df_raw = pd.read_excel(url, sheet_name='DOTACION')
+        # 1. Búsqueda flexible de la solapa para evitar errores de nombre
+        xls = pd.ExcelFile(url)
+        nombres_solapas = xls.sheet_names
+        nombre_dot = next((s for s in nombres_solapas if 'DOTACION' in s.upper()), None)
+
+        if not nombre_dot:
+            st.error(f"Falta solapa de Dotación. Solapas leídas: {nombres_solapas}")
+            return pd.DataFrame()
+
+        # 2. Cargar solo la hoja encontrada
+        df_raw = pd.read_excel(url, sheet_name=nombre_dot)
         
-        # 1. Limpieza inicial: Forzar nombres de columnas a string y limpiar espacios
+        # Limpieza inicial: Forzar nombres de columnas a string y limpiar espacios
         df_raw.columns = [str(c).strip().upper() for c in df_raw.columns]
         
-        # 2. Eliminar filas vacías o de separación (ej. fila 24)
-        # Asumimos que la columna A tiene el año, si no hay año, la fila no sirve
+        # Eliminar filas vacías o de separación (basado en que la columna A debe tener el año)
         df_raw = df_raw.dropna(subset=[df_raw.columns[0]]) 
         
-        # 3. Renombrar las primeras 3 columnas para asegurar consistencia
+        # Renombrar las primeras 3 columnas para asegurar consistencia
         df_raw = df_raw.rename(columns={
             df_raw.columns[0]: 'AÑO',
             df_raw.columns[1]: 'EMPRESA',
             df_raw.columns[2]: 'LOCALIDAD'
         })
         
-        # 4. Seleccionar columnas: Mantener AÑO, EMPRESA, LOCALIDAD 
-        # y solo las columnas de MES FINAL (que tienen el formato mes-año, ej: ENE-25)
-        # Ignoramos las que no tienen guion (ej: ENE25) o dicen PROMEDIO
+        # Seleccionar columnas: Mantener AÑO, EMPRESA, LOCALIDAD y MES FINAL (con guion)
         columnas_base = ['AÑO', 'EMPRESA', 'LOCALIDAD']
         columnas_meses = [c for c in df_raw.columns if re.search(r'-', c) and 'PROMEDIO' not in c]
         
         df_filtrado = df_raw[columnas_base + columnas_meses].copy()
         
-        # 5. Transformar (Unpivot): Pasar de columnas de meses a filas
+        # Transformar (Unpivot): Pasar de columnas de meses a filas
         df_melted = pd.melt(
             df_filtrado, 
             id_vars=columnas_base, 
@@ -51,13 +57,9 @@ def load_and_transform_dotacion():
             value_name='HEADCOUNT'
         )
         
-        # 6. Limpieza final de datos
-        # Forzar año a numérico (limpiando posibles textos)
+        # Limpieza final de datos
         df_melted['AÑO'] = pd.to_numeric(df_melted['AÑO'], errors='coerce')
-        # Forzar Headcount a numérico, convirtiendo errores (vacíos) en NaN, luego a 0
         df_melted['HEADCOUNT'] = pd.to_numeric(df_melted['HEADCOUNT'], errors='coerce').fillna(0)
-        
-        # Eliminar filas donde no hay año (por si quedó basura)
         df_melted = df_melted.dropna(subset=['AÑO'])
         
         return df_melted
