@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import html5lib  # Importado para asegurar la lectura del HTML
+import lxml      # Importado como motor alternativo de lectura
 
 # Configuración de la página
 st.set_page_config(page_title="Dashboard Dotación - Grupo Cenoa", layout="wide")
@@ -17,25 +18,18 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQeYlPH-NwPQdPU4tLi
 def load_all_data(url):
     try:
         # Leemos todas las tablas del HTML publicado
-        # Nota: Google Sheets publica las solapas como tablas diferentes en el HTML
-        all_tables = pd.read_html(url, header=1)
+        # Forzamos el uso de html5lib o lxml para evitar el error anterior
+        all_tables = pd.read_html(url, header=1, flavor=['html5lib', 'lxml'])
         
         historial_df = []
         
-        # Procesamos cada tabla (asumiendo que cada una es un mes)
         for i, df in enumerate(all_tables):
             # Limpieza básica de columnas
             df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
             
-            # Intentamos identificar el periodo (mes/año) 
-            # Si el link pubhtml no trae los nombres de las pestañas, 
-            # buscamos una celda que contenga fechas o usamos un índice.
             if 'EMPRESA' in df.columns and 'APELLIDO Y NOMBRE' in df.columns:
-                # Filtrar filas vacías o de prueba según tus registros
+                # Filtrar filas vacías o de prueba
                 df = df[df['APELLIDO Y NOMBRE'].notna()]
-                
-                # Agregar columna de periodo si existe en el encabezado o datos
-                # (Aquí puedes ajustar la lógica según cómo aparezca el mes en el HTML)
                 historial_df.append(df)
         
         if not historial_df:
@@ -75,10 +69,14 @@ else:
     with m1:
         st.metric("Dotación Total", len(df_filtered))
     with m2:
-        # Ejemplo basado en tus datos de RRHH: Total histórico esperado 529
         st.metric("Empresas Activas", df_filtered["EMPRESA"].nunique())
     with m3:
-        st.metric("Promedio Edad", round(pd.to_numeric(df_filtered["EDAD"], errors='coerce').mean(), 1))
+        # Calculamos el promedio de edad si la columna existe
+        if "EDAD" in df_filtered.columns:
+            promedio_edad = round(pd.to_numeric(df_filtered["EDAD"], errors='coerce').mean(), 1)
+            st.metric("Promedio Edad", promedio_edad)
+        else:
+            st.metric("Promedio Edad", "N/A")
     with m4:
         st.metric("Sucursales", df_filtered["SUCURSAL"].nunique())
 
@@ -99,10 +97,15 @@ else:
         st.plotly_chart(fig_suc, use_container_width=True)
 
     st.subheader("Análisis por Áreas y Puestos")
-    fig_area = px.treemap(df_filtered, path=['ÁREA', 'SUB ÁREA', 'PUESTO'], 
-                          title="Jerarquía de Dotación por Sector")
-    st.plotly_chart(fig_area, use_container_width=True)
+    # Verificamos que existan las columnas para el treemap
+    cols_treemap = [col for col in ['ÁREA', 'SUB ÁREA', 'PUESTO'] if col in df_filtered.columns]
+    
+    if cols_treemap:
+        fig_area = px.treemap(df_filtered, path=cols_treemap, title="Jerarquía de Dotación por Sector")
+        st.plotly_chart(fig_area, use_container_width=True)
 
     # --- TABLA DE DATOS ---
     with st.expander("Ver detalle de la nómina"):
-        st.dataframe(df_filtered[["APELLIDO Y NOMBRE", "DNI", "EMPRESA", "SUCURSAL", "ÁREA", "PUESTO", "F. INGR"]])
+        # Mostramos las columnas principales que estén disponibles
+        cols_mostrar = [c for c in ["APELLIDO Y NOMBRE", "DNI", "EMPRESA", "SUCURSAL", "ÁREA", "PUESTO", "F. INGR"] if c in df_filtered.columns]
+        st.dataframe(df_filtered[cols_mostrar])
