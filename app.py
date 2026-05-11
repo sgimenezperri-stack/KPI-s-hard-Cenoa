@@ -4,145 +4,119 @@ import numpy as np
 import plotly.express as px
 from datetime import datetime
 
-# 1. CONFIGURACIÓN E INTERFAZ
 st.set_page_config(page_title="HC Analytics | Grupo Cenoa", layout="wide")
 
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 2. CARGA DE DATOS (LECTURA SEGURA)
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 
 @st.cache_data(ttl=60)
 def load_data():
-    # Todo como texto para evitar el error de float vs str
     df = pd.read_csv(CSV_URL, dtype=str)
-    
-    # Normalizar encabezados
     df.columns = [str(c).strip().upper() for c in df.columns]
+    
+    # Mapeo de columnas clave
     df = df.rename(columns={
         'ÁREA': 'AREA', 
         'F. INGR': 'FECHA DE INGRESO',
         'FECHA INGRESO': 'FECHA DE INGRESO',
-        'ANTIGÜEDAD': 'ANTIGUEDAD'
+        'F. EGRESO': 'FECHA DE EGRESO',
+        'FECHA EGRESO': 'FECHA DE EGRESO'
     })
-    
-    # Limpieza masiva de basura
-    df = df.replace(['-', ' -', '- ', '0', '0.0', 'NAN', 'NONE', ''], np.nan)
-    
-    # Normalizar textos y extraer datos numéricos
-    for col in df.columns:
-        if col not in ['FECHA DE INGRESO', 'FECHA DE EGRESO']:
-            df[col] = df[col].astype(str).str.strip().str.upper()
 
-    # Edad: Extraer solo número de "XX AÑOS"
+    # Limpieza y conversión de fechas
+    df['FECHA_ING_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
+    df['FECHA_EGR_DT'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
+    
+    # Edad numérica
     if 'EDAD' in df.columns:
         df['EDAD_NUM'] = df['EDAD'].str.extract('(\d+)').astype(float)
-
-    # Fechas: Procesar para cálculos de crecimiento y filtros
-    if 'FECHA DE INGRESO' in df.columns:
-        df['FECHA_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
-        df['ANIO_ING'] = df['FECHA_DT'].dt.year.fillna(0).astype(int).astype(str)
     
+    # Normalizar textos
+    cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'ESTADO', 'SEXO']
+    for c in cols_txt:
+        if c in df.columns:
+            df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], np.nan)
+            
     return df
 
 try:
     df_raw = load_data()
 
-    # --- PANEL LATERAL: NAVEGACIÓN ---
+    # --- PANEL LATERAL ---
     st.sidebar.title("📈 Gestión Human Capital")
-    modulo = st.sidebar.radio("Dimensión de Análisis:", ["1- DOTACION", "2- ROTACION", "3- AUSENTISMO"])
+    
+    # Selector de Mes y Año de Corte (Para ver la dotación en ese momento exacto)
+    st.sidebar.subheader("Punto en el Tiempo")
+    hoy = datetime.now()
+    mes_analisis = st.sidebar.slider("Mes de Corte", 1, 12, hoy.month)
+    anio_analisis = st.sidebar.selectbox("Año de Corte", [2026, 2025, 2024], index=0)
+    fecha_corte = pd.to_datetime(datetime(anio_analisis, mes_analisis, 1))
 
-    if modulo == "1- DOTACION":
-        st.sidebar.divider()
-        st.sidebar.subheader("Filtros de Dotación")
+    st.sidebar.divider()
+    
+    # Filtros de estructura
+    def get_opts(col): return sorted([x for x in df_raw[col].unique() if pd.notna(x)])
+    sel_emp = st.sidebar.multiselect("Empresa", get_opts('EMPRESA'), default=get_opts('EMPRESA'))
+    sel_area = st.sidebar.multiselect("Área", get_opts('AREA'), default=get_opts('AREA'))
 
-        def get_opts(col):
-            return sorted([x for x in df_raw[col].unique() if pd.notna(x) and x not in ['NAN', '0']])
+    # --- LÓGICA DE RECONSTRUCCIÓN HISTÓRICA ---
+    # Un empleado estaba activo en la fecha de corte si:
+    # 1. Ingresó antes o el mismo día de la fecha de corte.
+    # 2. No tiene fecha de egreso O su fecha de egreso es posterior a la fecha de corte.
+    
+    mask_historica = (
+        (df_raw['FECHA_ING_DT'] <= fecha_corte) & 
+        ((df_raw['FECHA_EGR_DT'].isna()) | (df_raw['FECHA_EGR_DT'] > fecha_corte))
+    )
+    
+    df_periodo = df_raw[mask_historica].copy()
+    
+    # Aplicar filtros de empresa y área sobre ese histórico
+    if sel_emp: df_periodo = df_periodo[df_periodo['EMPRESA'].isin(sel_emp)]
+    if sel_area: df_periodo = df_periodo[df_periodo['AREA'].isin(sel_area)]
 
-        sel_emp = st.sidebar.multiselect("Empresa", get_opts('EMPRESA'), default=get_opts('EMPRESA'))
-        sel_loc = st.sidebar.multiselect("Localidad", get_opts('LOCALIDAD'), default=get_opts('LOCALIDAD'))
-        sel_area = st.sidebar.multiselect("Área", get_opts('AREA'), default=get_opts('AREA'))
-        
-        # FILTRO DE AÑO (Para analizar 2025, 2026, etc.)
-        anios_disp = sorted([x for x in df_raw['ANIO_ING'].unique() if x != '0'], reverse=True)
-        sel_anio = st.sidebar.multiselect("Año de Ingreso (Análisis Periodo)", anios_disp, default=anios_disp)
+    # --- DASHBOARD ---
+    st.title(f"📊 Análisis de Dotación: {mes_analisis}/{anio_analisis}")
+    st.caption("Considera empleados activos a la fecha, incluyendo 'Inactivos' actuales que estaban presentes en este periodo.")
 
-        # --- APLICACIÓN DE FILTROS ---
-        df_act = df_raw[df_raw['ESTADO'] == 'ACTIVO'].copy()
-        
-        if sel_emp: df_act = df_act[df_act['EMPRESA'].isin(sel_emp)]
-        if sel_loc: df_act = df_act[df_act['LOCALIDAD'].isin(sel_loc)]
-        if sel_area: df_act = df_act[df_act['AREA'].isin(sel_area)]
-        if sel_anio: df_act = df_act[df_act['ANIO_ING'].isin(sel_anio)]
+    # KPIs
+    dot_total = len(df_periodo)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Dotación en Periodo", dot_total)
+    
+    # Comparativa vs mes anterior (simplificada)
+    fecha_ant = fecha_corte - pd.DateOffset(months=1)
+    dot_ant = len(df_raw[(df_raw['FECHA_ING_DT'] <= fecha_ant) & ((df_raw['FECHA_EGR_DT'].isna()) | (df_raw['FECHA_EGR_DT'] > fecha_ant))])
+    c2.metric("Variación vs Mes Ant.", dot_total, delta=int(dot_total - dot_ant))
+    
+    edad_p = df_periodo['EDAD_NUM'].mean()
+    c3.metric("Edad Promedio", f"{edad_p:.1f}" if pd.notna(edad_p) else "S/D")
 
-        # --- CÁLCULO DE CRECIMIENTO ---
-        f_ini_2026 = pd.to_datetime('2026-01-01')
-        f_ini_2025 = pd.to_datetime('2025-01-01')
-        
-        dot_hoy = len(df_act)
-        dot_ini_2026 = len(df_act[df_act['FECHA_DT'] < f_ini_2026])
-        dot_ini_2025 = len(df_act[df_act['FECHA_DT'] < f_ini_2025])
-        
-        crec_2026 = ((dot_hoy - dot_ini_2026) / dot_ini_2026 * 100) if dot_ini_2026 > 0 else 100
-        crec_2025 = ((dot_hoy - dot_ini_2025) / dot_ini_2025 * 100) if dot_ini_2025 > 0 else 100
+    st.divider()
 
-        # --- DASHBOARD VISUAL ---
-        st.title("👥 Análisis de Dotación y Crecimiento")
-        
-        # Fila 1: Métricas de Crecimiento
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Dotación Actual", dot_hoy)
-        m2.metric("Crecimiento 2026", f"{crec_2026:.1f}%", f"{dot_hoy - dot_ini_2026} netos")
-        m3.metric("Crecimiento vs 2025", f"{crec_2025:.1f}%")
-        edad_p = df_act['EDAD_NUM'].mean()
-        m4.metric("Edad Promedio", f"{edad_p:.1f}" if pd.notna(edad_p) else "S/D")
+    # --- GRÁFICO DE EVOLUCIÓN MENSUAL ---
+    st.subheader("📈 Evolución Histórica de la Dotación")
+    
+    fechas_rango = pd.date_range(start='2024-01-01', end=datetime.now(), freq='MS')
+    evolucion = []
+    for f in fechas_rango:
+        conteo = len(df_raw[(df_raw['FECHA_ING_DT'] <= f) & ((df_raw['FECHA_EGR_DT'].isna()) | (df_raw['FECHA_EGR_DT'] > f))])
+        evolucion.append({'Fecha': f, 'Dotación': conteo})
+    
+    df_evolucion = pd.DataFrame(evolucion)
+    fig_linea = px.line(df_evolucion, x='Fecha', y='Dotación', markers=True, title="Crecimiento Neto Grupo Cenoa")
+    st.plotly_chart(fig_linea, use_container_width=True)
 
-        st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Dotación por Empresa")
+        st.plotly_chart(px.bar(df_periodo.groupby('EMPRESA').size().reset_index(name='Cant'), x='EMPRESA', y='Cant', text_auto=True), use_container_width=True)
+    with col2:
+        st.subheader("Distribución por Área")
+        st.plotly_chart(px.pie(df_periodo, names='AREA', hole=0.4), use_container_width=True)
 
-        # Fila 2: Distribución
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("Headcount por Empresa")
-            fig_emp = px.bar(df_act.groupby('EMPRESA').size().reset_index(name='Cant'), 
-                             x='EMPRESA', y='Cant', text_auto=True, color='EMPRESA')
-            st.plotly_chart(fig_emp, use_container_width=True)
-        with c2:
-            st.subheader("Distribución Geográfica")
-            fig_loc = px.pie(df_act, names='LOCALIDAD', hole=0.4)
-            st.plotly_chart(fig_loc, use_container_width=True)
-
-        st.divider()
-
-        # Fila 3: Crecimiento Detallado por Área
-        st.subheader("📊 Índice de Crecimiento por Empresa y Área")
-        res_crec = df_act.groupby(['EMPRESA', 'AREA']).agg(
-            Actual=('ESTADO', 'count'),
-            Inicio_2026=('FECHA_DT', lambda x: (x < f_ini_2026).sum())
-        ).reset_index()
-        res_crec['Variacion_%'] = ((res_crec['Actual'] - res_crec['Inicio_2026']) / res_crec['Inicio_2026'] * 100).replace([np.inf, -np.inf], 100).fillna(0)
-        
-        st.dataframe(res_crec.sort_values(by='Variacion_%', ascending=False), use_container_width=True)
-
-        st.divider()
-
-        # Fila 4: Estructura Sunburst (Explorador)
-        st.subheader("Explorador Organizacional (Área > Sub Área > Puesto)")
-        fig_sun = px.sunburst(df_act, path=['EMPRESA', 'AREA', 'SUB AREA', 'PUESTO'], color='EMPRESA')
-        fig_sun.update_layout(height=600)
-        st.plotly_chart(fig_sun, use_container_width=True)
-
-        # Fila 5: Tabla Maestra
-        with st.expander("Ver Nómina Completa Filtrada"):
-            st.dataframe(df_act[['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO']], use_container_width=True)
-
-    elif modulo == "2- ROTACION":
-        st.title("🔄 Análisis de Rotación e Índice de Bajas")
-        st.info("Módulo configurado para procesar motivos de egreso.")
+    st.subheader("Estructura en este Periodo")
+    fig_sun = px.sunburst(df_periodo, path=['EMPRESA', 'AREA', 'PUESTO'], color='EMPRESA')
+    st.plotly_chart(fig_sun, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Error detectado: {e}")
+    st.error(f"Error: {e}")
