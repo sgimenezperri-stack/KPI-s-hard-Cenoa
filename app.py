@@ -19,11 +19,14 @@ def load_data():
     # Limpieza de nombres de columnas (quitar espacios y pasar a MAYÚSCULAS)
     df.columns = df.columns.str.strip().str.upper()
     
+    # Limpiar filas completamente vacías al final del archivo
+    df = df.dropna(subset=['EMPRESA', 'ESTADO'], how='all')
+    
     # Procesamiento de Fechas (Ingreso en W y Egreso en AV)
     if 'F. INGR' in df.columns:
         df['F. INGR'] = pd.to_datetime(df['F. INGR'], errors='coerce')
-    if 'F. EGRESO' in df.columns:
-        df['F. EGRESO'] = pd.to_datetime(df['F. EGRESO'], errors='coerce')
+    if 'FECHA DE EGRESO' in df.columns:  # CORREGIDO AQUÍ
+        df['FECHA DE EGRESO'] = pd.to_datetime(df['FECHA DE EGRESO'], errors='coerce')
     
     return df
 
@@ -38,16 +41,14 @@ try:
     # --- PANEL LATERAL (FILTROS) ---
     st.sidebar.title("Filtros de Gestión")
     
-    # Filtro por Empresa
-    list_empresas = sorted(df['EMPRESA'].dropna().unique())
+    # Filtros limpiando valores nulos o "0"
+    list_empresas = sorted([x for x in df['EMPRESA'].unique() if str(x) != '0' and str(x) != 'nan'])
     empresa_sel = st.sidebar.multiselect("Seleccionar Concesionaria", list_empresas, default=list_empresas)
     
-    # Filtro por Localidad
-    list_localidades = sorted(df['LOCALIDAD'].dropna().unique())
+    list_localidades = sorted([x for x in df['LOCALIDAD'].unique() if str(x) != '0' and str(x) != 'nan'])
     localidad_sel = st.sidebar.multiselect("Seleccionar Localidad", list_localidades, default=list_localidades)
     
-    # Filtro por Áreas
-    list_areas = sorted(df['ÁREA'].dropna().unique())
+    list_areas = sorted([x for x in df['ÁREA'].unique() if str(x) != '0' and str(x) != 'nan'])
     area_sel = st.sidebar.multiselect("Seleccionar Área", list_areas, default=list_areas)
 
     # Aplicación de filtros cruzados
@@ -59,19 +60,21 @@ try:
     # --- CÁLCULOS KPI HARD (ROTACIÓN OIT) ---
     
     # 1. Dotación Inicial (Estaban activos al inicio del año)
+    # CORREGIDO: Uso de 'FECHA DE EGRESO'
     dot_inicial = len(df_f[
         (df_f['F. INGR'] < inicio_anio) & 
-        ((df_f['ESTADO'].str.upper() == 'ACTIVO') | (df_f['F. EGRESO'] >= inicio_anio))
+        ((df_f['ESTADO'].str.upper() == 'ACTIVO') | (df_f['FECHA DE EGRESO'] >= inicio_anio))
     ])
 
-    # 2. Dotación Final (Activos hoy)
+    # 2. Dotación Final (Activos hoy en columna AU)
     dot_final = len(df_f[df_f['ESTADO'].str.upper() == 'ACTIVO'])
 
     # 3. Bajas del periodo (Inactivos con egresos ocurridos este año)
+    # CORREGIDO: Uso de 'FECHA DE EGRESO'
     bajas_periodo = len(df_f[
         (df_f['ESTADO'].str.upper() == 'INACTIVO') & 
-        (df_f['F. EGRESO'] >= inicio_anio) & 
-        (df_f['F. EGRESO'] <= hoy)
+        (df_f['FECHA DE EGRESO'] >= inicio_anio) & 
+        (df_f['FECHA DE EGRESO'] <= hoy)
     ])
 
     # 4. Cálculo Rotación: Bajas / ((Dot. Inicial + Dot. Final) / 2)
@@ -81,7 +84,7 @@ try:
     # Periodo de Prueba
     en_prueba = len(df_f[
         (df_f['ESTADO'].str.upper() == 'ACTIVO') & 
-        (df_f['ANTIGÜEDAD'].str.contains('00 Años', na=False))
+        (df_f['ANTIGÜEDAD'].astype(str).str.contains('00 Años', na=False))
     ])
 
     # --- DISEÑO DEL DASHBOARD ---
@@ -126,5 +129,5 @@ try:
                      use_container_width=True)
 
 except Exception as e:
-    st.error(f"Se detectó un error al procesar la BDD: {e}")
-    st.info("Recomendación: Verifica que no haya celdas combinadas en las filas de encabezado de Google Sheets.")
+    st.error(f"Se detectó un error al procesar la BDD: '{e}'")
+    st.info("Recomendación: Verifica que el nombre de la columna coincida exactamente.")
