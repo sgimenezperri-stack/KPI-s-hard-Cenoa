@@ -2,128 +2,102 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from datetime import datetime
 
-# 1. CONFIGURACIÓN DE PÁGINA
+# 1. CONFIGURACIÓN
 st.set_page_config(page_title="HC Analytics | Grupo Cenoa", layout="wide")
 
-# Estilo profesional corregido
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 2. CARGA Y LIMPIEZA PROFUNDA
+# 2. CARGA DE DATOS
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60) # Bajamos el cache a 1 min para que los cambios en el Excel se vean rápido
 def load_data():
-    # Cargar datos tratando todo como texto inicialmente para evitar errores de tipo automáticos
     df = pd.read_csv(CSV_URL, dtype=str)
-    
-    # Normalizar títulos
     df.columns = df.columns.str.strip().str.upper()
     df = df.rename(columns={'ÁREA': 'AREA', 'F. INGR': 'FECHA DE INGRESO'})
-
-    # REEMPLAZO CRÍTICO: Convertir guiones y ceros de texto en valores Nulos reales (NaN)
-    df = df.replace(['-', ' -', '- ', '0', 'nan', 'NAN', 'None', ''], np.nan)
-
-    # Limpiar espacios en blanco en columnas de texto
-    for col in df.columns:
-        df[col] = df[col].str.strip()
-
-    # PROCESAMIENTO SEGURO DE FECHAS
-    # errors='coerce' transformará cualquier "-" que haya sobrevivido en NaT (Not a Time), que no rompe comparaciones
-    if 'FECHA DE INGRESO' in df.columns:
-        df['FECHA DE INGRESO'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
-        df['AÑO_INGRESO'] = df['FECHA DE INGRESO'].dt.year.fillna(0).astype(int)
     
-    if 'FECHA DE EGRESO' in df.columns:
-        df['FECHA DE EGRESO'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
-
-    # PROCESAMIENTO DE EDAD
-    if 'EDAD' in df.columns:
-        df['EDAD_NUM'] = df['EDAD'].str.extract('(\d+)').astype(float)
-
+    # LIMPIEZA TOTAL: Guiones, ceros y espacios
+    df = df.replace(['-', ' -', '- ', '0', 'nan', 'NAN', ''], np.nan)
+    
+    # Normalizamos todas las columnas de texto para que los filtros coincidan siempre
+    for col in df.columns:
+        df[col] = df[col].astype(str).str.strip().str.upper()
+    
+    # Procesar fechas para filtros de año
+    if 'FECHA DE INGRESO' in df.columns:
+        df['FECHA_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
+        df['AÑO_INGRESO'] = df['FECHA_DT'].dt.year.fillna(0).astype(int)
+    
     return df
 
 try:
-    df = load_data()
+    df_raw = load_data()
 
-    # --- NAVEGACIÓN ---
+    # --- PANEL LATERAL (FILTROS) ---
     st.sidebar.title("Módulos RRHH")
-    modulo = st.sidebar.radio("Dimensión:", ["1- DOTACION", "2- ROTACION", "3- AUSENTISMO"])
+    modulo = st.sidebar.radio("Dimensión:", ["1- DOTACION", "2- ROTACION"])
 
     if modulo == "1- DOTACION":
         st.sidebar.divider()
-        st.sidebar.subheader("Filtros")
+        st.sidebar.subheader("Filtros de Precisión")
 
-        # Función para obtener listas de filtros sin valores nulos
-        def clean_options(col):
-            return sorted([x for x in df[col].unique() if pd.notna(x)])
+        # Función para opciones de filtro sin basura
+        def get_options(col):
+            opts = sorted([x for x in df_raw[col].unique() if x not in ['NAN', 'NONE', '0']])
+            return opts
 
-        list_emp = clean_options('EMPRESA')
-        emp_sel = st.sidebar.multiselect("Empresa", list_emp, default=list_emp)
-
-        list_loc = clean_options('LOCALIDAD')
-        loc_sel = st.sidebar.multiselect("Localidad", list_loc, default=list_loc)
-
-        list_area = clean_options('AREA')
-        area_sel = st.sidebar.multiselect("Área", list_area, default=list_area)
-
-        # FILTRADO SEGURO (Solo Activos)
-        # Forzamos comparación de strings para evitar el TypeError
-        df_activos = df[
-            (df['ESTADO'].str.upper() == 'ACTIVO') &
-            (df['EMPRESA'].isin(emp_sel)) &
-            (df['LOCALIDAD'].isin(loc_sel)) &
-            (df['AREA'].isin(area_sel))
-        ].copy()
-
-        # --- INTERFAZ ---
-        st.title("👥 Análisis de Dotación (Headcount)")
+        # Creación de filtros
+        selected_emp = st.sidebar.multiselect("Filtrar Empresa", get_options('EMPRESA'), default=get_options('EMPRESA'))
+        selected_loc = st.sidebar.multiselect("Filtrar Localidad", get_options('LOCALIDAD'), default=get_options('LOCALIDAD'))
+        selected_area = st.sidebar.multiselect("Filtrar Área", get_options('AREA'), default=get_options('AREA'))
         
-        total = len(df_activos)
+        anios_validos = sorted([x for x in df_raw['AÑO_INGRESO'].unique() if x > 0], reverse=True)
+        selected_anio = st.sidebar.multiselect("Año de Ingreso", anios_validos, default=anios_validos)
+
+        # --- APLICACIÓN CRÍTICA DE FILTROS ---
+        # Paso 1: Solo activos
+        mask_activos = (df_raw['ESTADO'] == 'ACTIVO')
+        
+        # Paso 2: Aplicar multiselects uno por uno
+        mask_final = (
+            mask_activos &
+            (df_raw['EMPRESA'].isin(selected_emp)) &
+            (df_raw['LOCALIDAD'].isin(selected_loc)) &
+            (df_raw['AREA'].isin(selected_area)) &
+            (df_raw['AÑO_INGRESO'].isin(selected_anio))
+        )
+        
+        df_final = df_raw[mask_final].copy()
+
+        # --- VISUALIZACIÓN ---
+        st.title("👥 Análisis de Dotación")
+        
+        total = len(df_final)
         
         if total > 0:
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Dotación Activa", f"{total}", "Personas")
-            
-            # Cálculo seguro de promedio ignorando nulos
-            edad_prom = df_activos['EDAD_NUM'].mean()
-            c2.metric("Edad Promedio", f"{edad_prom:.1f}" if pd.notna(edad_prom) else "S/D")
-            
-            mujeres = len(df_activos[df_activos['SEXO'].str.upper() == 'F'])
-            c3.metric("Género", f"{(mujeres/total*100):.1f}% Muj.", f"{mujeres} F")
-            c4.metric("Localidades", df_activos['LOCALIDAD'].nunique())
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Dotación Filtrada", f"{total} pers.")
+            c2.metric("Empresas Seleccionadas", f"{len(selected_emp)}")
+            c3.metric("Localidades", df_final['LOCALIDAD'].nunique())
 
             st.divider()
 
-            # Gráficos de barras y torta
-            g1, g2 = st.columns(2)
-            with g1:
-                st.subheader("Distribución por Empresa")
-                fig_emp = px.bar(df_activos.groupby('EMPRESA').size().reset_index(name='Cant'), 
-                                 x='EMPRESA', y='Cant', text_auto=True, color='EMPRESA')
-                st.plotly_chart(fig_emp, use_container_width=True)
-            with g2:
-                st.subheader("Dotación por Localidad")
-                fig_loc = px.pie(df_activos, names='LOCALIDAD', hole=0.4)
-                st.plotly_chart(fig_loc, use_container_width=True)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.subheader("Headcount por Empresa")
+                res_emp = df_final.groupby('EMPRESA').size().reset_index(name='Cant')
+                st.plotly_chart(px.bar(res_emp, x='EMPRESA', y='Cant', text_auto=True), use_container_width=True)
+            
+            with col_b:
+                st.subheader("Distribución por Localidad")
+                st.plotly_chart(px.pie(df_final, names='LOCALIDAD', hole=0.3), use_container_width=True)
 
-            st.subheader("Estructura Organizacional (Área > Sub Área > Puesto)")
-            fig_sun = px.sunburst(df_activos, path=['EMPRESA', 'AREA', 'SUB AREA', 'PUESTO'], color='EMPRESA')
+            st.subheader("Estructura Jerárquica")
+            # El Sunburst ahora solo mostrará lo que esté en df_final
+            fig_sun = px.sunburst(df_final, path=['EMPRESA', 'AREA', 'SUB AREA', 'PUESTO'], color='EMPRESA')
             st.plotly_chart(fig_sun, use_container_width=True)
-
         else:
-            st.warning("No se encontraron colaboradores con los filtros actuales.")
-
-    elif modulo == "2- ROTACION":
-        st.title("🔄 Análisis de Rotación")
-        st.info("Módulo configurado. Pendiente lógica de bajas.")
+            st.error("⚠️ No hay datos para esta combinación de filtros.")
+            st.info("Prueba seleccionando todas las empresas o áreas en el panel izquierdo.")
 
 except Exception as e:
-    st.error(f"Error detectado: {e}")
-    st.info("Sugerencia: Si el error persiste, verifica que la columna 'ESTADO' no contenga fórmulas de Excel rotas.")
+    st.error(f"Error: {e}")
