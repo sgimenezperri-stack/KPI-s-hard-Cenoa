@@ -1,133 +1,167 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
+import numpy as np
 from datetime import datetime
+import re
 
-# Configuración de la interfaz profesional
-st.set_page_config(page_title="People Analytics | Grupo Cenoa", layout="wide", initial_sidebar_state="expanded")
+# 1. CONFIGURACIÓN DE LA PÁGINA
+st.set_page_config(page_title="Human Capital Analytics | Grupo Cenoa", layout="wide")
 
-# --- CONEXIÓN DE DATOS ---
-# Link de publicación CSV de Google Sheets
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+    """, unsafe_allow_stdio=True)
+
+# 2. CONEXIÓN Y CARGA DE DATOS
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 
 @st.cache_data(ttl=300)
 def load_data():
-    # Leer CSV directamente desde la publicación web
     df = pd.read_csv(CSV_URL)
     
-    # Limpieza de nombres de columnas (quitar espacios y pasar a MAYÚSCULAS)
+    # Normalización estricta de columnas para evitar errores de tipeo o tildes en el Sheet
     df.columns = df.columns.str.strip().str.upper()
+    df = df.rename(columns={
+        'ÁREA': 'AREA', 
+        'ANTIGÜEDAD': 'ANTIGUEDAD',
+        'F. INGR': 'FECHA DE INGRESO'
+    })
     
-    # Limpiar filas completamente vacías al final del archivo
+    # Limpieza de filas vacías
     df = df.dropna(subset=['EMPRESA', 'ESTADO'], how='all')
     
-    # Procesamiento de Fechas (Ingreso en W y Egreso en AV)
-    if 'F. INGR' in df.columns:
-        df['F. INGR'] = pd.to_datetime(df['F. INGR'], errors='coerce')
-    if 'FECHA DE EGRESO' in df.columns:  # CORREGIDO AQUÍ
+    # Procesamiento de Fechas
+    if 'FECHA DE INGRESO' in df.columns:
+        df['FECHA DE INGRESO'] = pd.to_datetime(df['FECHA DE INGRESO'], errors='coerce')
+        df['AÑO_INGRESO'] = df['FECHA DE INGRESO'].dt.year.fillna(0).astype(int)
+    if 'FECHA DE EGRESO' in df.columns:
         df['FECHA DE EGRESO'] = pd.to_datetime(df['FECHA DE EGRESO'], errors='coerce')
-    
+        
+    # Limpieza de EDAD (Quitar " Años" para poder calcular promedios matemáticos)
+    if 'EDAD' in df.columns:
+        df['EDAD_NUM'] = df['EDAD'].astype(str).str.extract(r'(\d+)').astype(float)
+        
     return df
 
 try:
     df = load_data()
 
-    # --- LÓGICA DE TIEMPO (Año actual para Rotación OIT) ---
-    anio_actual = datetime.now().year
-    inicio_anio = pd.to_datetime(f"{anio_actual}-01-01")
-    hoy = pd.to_datetime(datetime.now())
+    # --- PANEL IZQUIERDO: NAVEGACIÓN ---
+    st.sidebar.image("https://via.placeholder.com/200x80?text=GRUPO+CENOA", use_column_width=True)
+    st.sidebar.title("Módulos RRHH")
+    categoria = st.sidebar.radio("Seleccione Dimensión:", ["1- DOTACION", "2- ROTACION", "3- AUSENTISMO"])
 
-    # --- PANEL LATERAL (FILTROS) ---
-    st.sidebar.title("Filtros de Gestión")
-    
-    # Filtros limpiando valores nulos o "0"
-    list_empresas = sorted([x for x in df['EMPRESA'].unique() if str(x) != '0' and str(x) != 'nan'])
-    empresa_sel = st.sidebar.multiselect("Seleccionar Concesionaria", list_empresas, default=list_empresas)
-    
-    list_localidades = sorted([x for x in df['LOCALIDAD'].unique() if str(x) != '0' and str(x) != 'nan'])
-    localidad_sel = st.sidebar.multiselect("Seleccionar Localidad", list_localidades, default=list_localidades)
-    
-    list_areas = sorted([x for x in df['ÁREA'].unique() if str(x) != '0' and str(x) != 'nan'])
-    area_sel = st.sidebar.multiselect("Seleccionar Área", list_areas, default=list_areas)
+    # --- LÓGICA DEL MÓDULO 1: DOTACIÓN ---
+    if categoria == "1- DOTACION":
+        st.sidebar.divider()
+        st.sidebar.subheader("Filtros de Dotación")
+        
+        # Filtros Dinámicos
+        list_emp = sorted([x for x in df['EMPRESA'].unique() if str(x) not in ['0', 'nan']])
+        emp_sel = st.sidebar.multiselect("Empresa", list_emp, default=list_emp)
+        
+        list_loc = sorted([x for x in df['LOCALIDAD'].unique() if str(x) not in ['0', 'nan']])
+        loc_sel = st.sidebar.multiselect("Localidad", list_loc, default=list_loc)
+        
+        list_area = sorted([x for x in df['AREA'].unique() if str(x) not in ['0', 'nan']])
+        area_sel = st.sidebar.multiselect("Área", list_area, default=list_area)
+        
+        list_anio = sorted([x for x in df['AÑO_INGRESO'].unique() if x > 0], reverse=True)
+        anio_sel = st.sidebar.multiselect("Año de Ingreso", list_anio, default=list_anio)
 
-    # Aplicación de filtros cruzados
-    mask = (df['EMPRESA'].isin(empresa_sel)) & \
-           (df['LOCALIDAD'].isin(localidad_sel)) & \
-           (df['ÁREA'].isin(area_sel))
-    df_f = df[mask].copy()
+        # Aplicar Filtros (Solo Activos)
+        df_activos = df[
+            (df['ESTADO'].astype(str).str.upper() == 'ACTIVO') &
+            (df['EMPRESA'].isin(emp_sel)) &
+            (df['LOCALIDAD'].isin(loc_sel)) &
+            (df['AREA'].isin(area_sel)) &
+            (df['AÑO_INGRESO'].isin(anio_sel))
+        ].copy()
 
-    # --- CÁLCULOS KPI HARD (ROTACIÓN OIT) ---
-    
-    # 1. Dotación Inicial (Estaban activos al inicio del año)
-    # CORREGIDO: Uso de 'FECHA DE EGRESO'
-    dot_inicial = len(df_f[
-        (df_f['F. INGR'] < inicio_anio) & 
-        ((df_f['ESTADO'].str.upper() == 'ACTIVO') | (df_f['FECHA DE EGRESO'] >= inicio_anio))
-    ])
+        # --- INTERFAZ VISUAL: DOTACIÓN ---
+        st.title("👥 Análisis de Dotación (Headcount)")
+        
+        # 1. TARJETAS DE KPIs
+        total_pax = len(df_activos)
+        edad_promedio = df_activos['EDAD_NUM'].mean() if 'EDAD_NUM' in df_activos.columns else 0
+        hombres = len(df_activos[df_activos['SEXO'] == 'M'])
+        mujeres = len(df_activos[df_activos['SEXO'] == 'F'])
+        pct_mujeres = (mujeres / total_pax * 100) if total_pax > 0 else 0
 
-    # 2. Dotación Final (Activos hoy en columna AU)
-    dot_final = len(df_f[df_f['ESTADO'].str.upper() == 'ACTIVO'])
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Dotación Activa", f"{total_pax}", "Colaboradores")
+        k2.metric("Edad Promedio", f"{edad_promedio:.1f} años")
+        k3.metric("Diversidad de Género", f"{pct_mujeres:.1f}% Mujeres", f"{mujeres} F / {hombres} M")
+        k4.metric("Convenios Activos", df_activos['CONVENIO'].nunique(), "Tipos de Contrato")
 
-    # 3. Bajas del periodo (Inactivos con egresos ocurridos este año)
-    # CORREGIDO: Uso de 'FECHA DE EGRESO'
-    bajas_periodo = len(df_f[
-        (df_f['ESTADO'].str.upper() == 'INACTIVO') & 
-        (df_f['FECHA DE EGRESO'] >= inicio_anio) & 
-        (df_f['FECHA DE EGRESO'] <= hoy)
-    ])
+        st.divider()
 
-    # 4. Cálculo Rotación: Bajas / ((Dot. Inicial + Dot. Final) / 2)
-    dot_promedio = (dot_inicial + dot_final) / 2
-    tasa_rotacion = (bajas_periodo / dot_promedio * 100) if dot_promedio > 0 else 0
+        # 2. GRÁFICOS ESTRUCTURALES (EMPRESA / LOCALIDAD / ÁREA)
+        c1, c2, c3 = st.columns(3)
+        
+        with c1:
+            st.subheader("Por Empresa")
+            fig_emp = px.bar(df_activos.groupby('EMPRESA').size().reset_index(name='Total'),
+                             x='EMPRESA', y='Total', color='EMPRESA', text_auto=True,
+                             color_discrete_sequence=px.colors.qualitative.Bold)
+            fig_emp.update_layout(showlegend=False, xaxis_title="", yaxis_title="")
+            st.plotly_chart(fig_emp, use_container_width=True)
 
-    # Periodo de Prueba
-    en_prueba = len(df_f[
-        (df_f['ESTADO'].str.upper() == 'ACTIVO') & 
-        (df_f['ANTIGÜEDAD'].astype(str).str.contains('00 Años', na=False))
-    ])
+        with c2:
+            st.subheader("Por Localidad")
+            fig_loc = px.pie(df_activos, names='LOCALIDAD', hole=0.4,
+                             color_discrete_sequence=px.colors.qualitative.Prism)
+            st.plotly_chart(fig_loc, use_container_width=True)
+            
+        with c3:
+            st.subheader("Por Generación")
+            fig_gen = px.pie(df_activos, names='GENERACION', 
+                             color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_gen, use_container_width=True)
 
-    # --- DISEÑO DEL DASHBOARD ---
-    st.title("📊 DashBoard People Analytics - Grupo Cenoa")
-    st.markdown(f"**Periodo:** {inicio_anio.strftime('%d/%m/%Y')} al {hoy.strftime('%d/%m/%Y')}")
+        # 3. ANÁLISIS DE PUESTOS Y JERARQUÍA
+        st.divider()
+        c4, c5 = st.columns([1.5, 1])
 
-    # Fila superior de métricas
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Dotación Actual", f"{dot_final} pers.", help="Colaboradores con estado 'Activo'")
-    m2.metric("Rotación OIT (YTD)", f"{tasa_rotacion:.1f}%", f"{bajas_periodo} bajas", delta_color="inverse")
-    m3.metric("Dotación Promedio", f"{dot_promedio:.1f}")
-    m4.metric("Periodo de Prueba", f"{en_prueba}", "Ingresos < 1 año")
+        with c4:
+            st.subheader("Top Puestos por Volumen")
+            puestos = df_activos.groupby('PUESTO').size().reset_index(name='Total').sort_values('Total', ascending=False).head(12)
+            fig_puesto = px.bar(puestos, x='Total', y='PUESTO', orientation='h', 
+                                color='Total', color_continuous_scale='Blues', text_auto=True)
+            fig_puesto.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="", yaxis_title="")
+            st.plotly_chart(fig_puesto, use_container_width=True)
 
-    st.divider()
+        with c5:
+            st.subheader("Pirámide Jerárquica")
+            jerarquia = df_activos.groupby('JERARQUIA').size().reset_index(name='Total').sort_values('Total', ascending=False)
+            fig_jer = px.funnel(jerarquia, y='JERARQUIA', x='Total', color_discrete_sequence=['#1f77b4'])
+            st.plotly_chart(fig_jer, use_container_width=True)
 
-    # Fila de Gráficos
-    c1, c2 = st.columns(2)
+        # 4. EXPLORADOR ORGANIZACIONAL PROFUNDO
+        st.subheader("Explorador de Estructura: Área y Sub Área")
+        st.info("Gráfico interactivo: Clic en el centro para expandir la estructura.")
+        fig_sun = px.sunburst(df_activos, path=['EMPRESA', 'AREA', 'SUB AREA'], 
+                             color='EMPRESA', color_discrete_sequence=px.colors.qualitative.Vivid)
+        fig_sun.update_layout(height=500, margin=dict(t=0, l=0, r=0, b=0))
+        st.plotly_chart(fig_sun, use_container_width=True)
+        
+        # 5. VISTA DE DATOS
+        with st.expander("Ver Maestro de Colaboradores Filtrado"):
+            st.dataframe(df_activos[['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'JEFE DIRECTO']], use_container_width=True)
 
-    with c1:
-        st.subheader("Dotación por Localidad")
-        dot_loc = df_f[df_f['ESTADO'].str.upper() == 'ACTIVO'].groupby('LOCALIDAD').size().reset_index(name='Cant')
-        fig_loc = px.bar(dot_loc, x='LOCALIDAD', y='Cant', color='LOCALIDAD', text_auto=True,
-                         color_discrete_sequence=px.colors.qualitative.Prism)
-        st.plotly_chart(fig_loc, use_container_width=True)
+    # --- LÓGICA DEL MÓDULO 2: ROTACIÓN ---
+    elif categoria == "2- ROTACION":
+        st.title("🔄 Análisis de Rotación (Fórmula OIT)")
+        st.info("Próximamente: Aquí integraremos las bajas, motivos de egreso (columna AW) y el velocímetro de rotación.")
 
-    with c2:
-        st.subheader("Distribución por Áreas")
-        dot_area = df_f[df_f['ESTADO'].str.upper() == 'ACTIVO'].groupby('ÁREA').size().reset_index(name='Cant')
-        fig_area = px.pie(dot_area, values='Cant', names='ÁREA', hole=0.4,
-                          color_discrete_sequence=px.colors.qualitative.Safe)
-        st.plotly_chart(fig_area, use_container_width=True)
-
-    # Gráfico de Desempeño por Concesionaria
-    st.subheader("Análisis de Dotación por Empresa")
-    dot_emp = df_f[df_f['ESTADO'].str.upper() == 'ACTIVO'].groupby('EMPRESA').size().reset_index(name='Cant')
-    fig_emp = px.bar(dot_emp, x='EMPRESA', y='Cant', color='EMPRESA', text_auto=True)
-    st.plotly_chart(fig_emp, use_container_width=True)
-
-    # Vista de Tabla Detallada
-    with st.expander("Ver Nómina Filtrada (Detalle)"):
-        st.dataframe(df_f[['APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'ÁREA', 'PUESTO', 'ESTADO', 'ANTIGÜEDAD']], 
-                     use_container_width=True)
+    # --- LÓGICA DEL MÓDULO 3: AUSENTISMO ---
+    elif categoria == "3- AUSENTISMO":
+        st.title("🤒 Control de Ausentismo")
+        st.info("Próximamente: Requiere tabla transaccional de ausencias.")
 
 except Exception as e:
-    st.error(f"Se detectó un error al procesar la BDD: '{e}'")
-    st.info("Recomendación: Verifica que el nombre de la columna coincida exactamente.")
+    st.error(f"Error al procesar la Base de Datos: {e}")
+    st.info("Asegúrate de que no haya celdas combinadas en los títulos del Google Sheet.")
