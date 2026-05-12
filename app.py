@@ -90,46 +90,57 @@ try:
 
     st.divider()
 
-    # --- GRÁFICO DINÁMICO DE CRECIMIENTO (ESPAÑOL Y ORDENADO) ---
+    # --- GRÁFICO DINÁMICO DE CRECIMIENTO ---
     st.subheader("📈 Evolución de Crecimiento Neto")
     
-    rango_fechas = pd.date_range(start='2024-01-01', end=fecha_corte, freq='ME')
+    # MODIFICACIÓN: Mostrar datos exclusivamente desde enero de 2025 en adelante
+    fecha_inicio_grafico = pd.to_datetime('2025-01-01')
+    
+    if fecha_corte >= fecha_inicio_grafico:
+        rango_fechas = pd.date_range(start=fecha_inicio_grafico, end=fecha_corte, freq='ME')
+    else:
+        # Si se consulta un año anterior a 2025, muestra desde el inicio de ese año específico
+        rango_fechas = pd.date_range(start=fecha_corte.replace(month=1, day=1), end=fecha_corte, freq='ME')
+        
     historia = []
     for f in rango_fechas:
         historia.append({'Fecha': f, 'Dotación': len(get_dotacion_a_fecha(df_universo, f))})
     
-    df_historia = pd.DataFrame(historia)
-    
-    # Diccionario de meses en español
-    meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 
-                7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
-    
-    # Creamos la etiqueta de texto (Ej: "Ene 2024")
-    df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
-    
-    fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-    
-    # Ajustes visuales de la gráfica
-    fig_evol.update_traces(
-        textposition="top center", 
-        textfont_size=12, 
-        marker=dict(size=8)
-    )
-    
-    # Forzamos las etiquetas del Eje X para que use nuestro texto en español y se incline
-    fig_evol.update_xaxes(
-        title="",
-        tickmode='array',
-        tickvals=df_historia['Fecha'],
-        ticktext=df_historia['Mes_Esp'],
-        tickangle=-45, # Inclinación perfecta para leer sin amontonar
-        showgrid=False # Quitamos líneas de fondo verticales para mayor limpieza
-    )
-    
-    fig_evol.update_yaxes(title="Cantidad de Colaboradores", showgrid=True, gridcolor='lightgray')
-    fig_evol.update_layout(plot_bgcolor='white', margin=dict(b=80)) # Espacio extra abajo para las etiquetas
-    
-    st.plotly_chart(fig_evol, use_container_width=True)
+    if historia:
+        df_historia = pd.DataFrame(historia)
+        
+        # Diccionario de meses en español
+        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 
+                    7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+        
+        # Creamos la etiqueta de texto (Ej: "Ene 2025")
+        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
+        
+        fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
+        
+        # Ajustes visuales de la gráfica
+        fig_evol.update_traces(
+            textposition="top center", 
+            textfont_size=12, 
+            marker=dict(size=8)
+        )
+        
+        # Forzamos las etiquetas del Eje X para que use nuestro texto en español y se incline
+        fig_evol.update_xaxes(
+            title="",
+            tickmode='array',
+            tickvals=df_historia['Fecha'],
+            ticktext=df_historia['Mes_Esp'],
+            tickangle=-45, 
+            showgrid=False 
+        )
+        
+        fig_evol.update_yaxes(title="Cantidad de Colaboradores", showgrid=True, gridcolor='lightgray')
+        fig_evol.update_layout(plot_bgcolor='white', margin=dict(b=80)) 
+        
+        st.plotly_chart(fig_evol, use_container_width=True)
+    else:
+        st.info("No hay datos históricos para graficar en este periodo.")
 
     # --- APERTURAS ---
     col1, col2 = st.columns(2)
