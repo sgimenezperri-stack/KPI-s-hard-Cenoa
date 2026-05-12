@@ -8,74 +8,64 @@ import calendar
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Dotación | Talent Hub", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. INYECCIÓN DE CSS (DISEÑO CORPORATIVO NEUTRO)
+# 2. INYECCIÓN DE CSS (DISEÑO CORPORATIVO)
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    /* Tipografía y fondos */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
     html, body, [class*="css"]  {
         font-family: 'Inter', sans-serif;
     }
     .stApp {
         background-color: #f8fafc;
     }
+    
+    /* Encabezados y textos */
     h1, h2, h3 {
-        color: #1e293b !important; 
+        color: #0f172a !important; 
     }
     .main-title {
         color: #0f172a;
         font-weight: 700;
-        font-size: 28px;
+        font-size: 32px;
         margin-bottom: -5px;
     }
     .sub-title {
-        color: #64748b;
+        color: #94a3b8;
         font-weight: 600;
-        font-size: 12px;
-        letter-spacing: 1.2px;
+        font-size: 13px;
+        letter-spacing: 1.5px;
         text-transform: uppercase;
         margin-bottom: 20px;
     }
+    
+    /* Estilo de Tarjetas de Métricas (KPIs) */
     [data-testid="metric-container"] {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
-        border-radius: 8px;
+        border-radius: 12px;
         padding: 20px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     [data-testid="metric-container"] label {
         color: #64748b !important;
-        font-weight: 500;
+        font-weight: 600;
     }
     [data-testid="metric-container"] div {
-        color: #1e293b !important;
+        color: #0f172a !important;
     }
+    
+    /* Ajustes de separadores y contenedores */
     hr {
         border-color: #e2e8f0;
     }
     .stExpander {
         background-color: #ffffff;
         border: 1px solid #e2e8f0 !important;
-        border-radius: 6px !important;
-    }
-    /* Estilo del icono corporativo superior */
-    .corp-logo {
-        background-color: #0f172a; 
-        width: 48px; 
-        height: 48px; 
-        border-radius: 10px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center;
-        color: white; 
-        font-size: 20px;
-        font-weight: 700;
-        letter-spacing: 1px;
+        border-radius: 8px !important;
     }
     </style>
 """, unsafe_allow_html=True)
-
-# PALETA DE COLORES NEUTRA PARA GRÁFICOS (Tonos Pizarra, Acero y Gris)
-paleta_corporativa = ['#1e293b', '#475569', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a', '#e2e8f0']
 
 # 3. LECTURA Y LIMPIEZA DE DATOS
 CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
@@ -118,17 +108,19 @@ try:
     # 4. ENCABEZADO PERSONALIZADO
     col_icon, col_text = st.columns([0.5, 11.5])
     with col_icon:
-        st.markdown("<div class='corp-logo'>TH</div>", unsafe_allow_html=True)
+        # Icono simulado en azul corporativo
+        st.markdown("<div style='background-color: #3b82f6; width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center;'><span style='color: white; font-size: 24px;'>👥</span></div>", unsafe_allow_html=True)
     with col_text:
         st.markdown("<div class='main-title'>Dotación</div>", unsafe_allow_html=True)
         st.markdown("<div class='sub-title'>Estructura Organizacional</div>", unsafe_allow_html=True)
 
-    # 5. BARRA DE FILTROS SUPERIOR
+    # 5. BARRA DE FILTROS SUPERIOR (ESTILO HORIZONTAL)
     st.markdown("<br>", unsafe_allow_html=True)
     f1, f2, f3, f4, f5 = st.columns(5)
     
     df_filt = df_raw.copy()
     
+    # Filtros de Tiempo
     with f4:
         anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
     with f5:
@@ -137,6 +129,7 @@ try:
     ultimo_dia = calendar.monthrange(anio_analisis, mes_analisis)[1]
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_analisis:02d}-{ultimo_dia}")
 
+    # Filtros Dinámicos
     def get_opts(col, df): 
         if col in df.columns: return sorted([x for x in df[col].unique() if pd.notna(x)])
         return []
@@ -153,7 +146,8 @@ try:
         sel_area = st.multiselect("ÁREA", get_opts('AREA', df_filt), placeholder="Todas")
         if sel_area: df_filt = df_filt[df_filt['AREA'].isin(sel_area)]
 
-    with st.expander("Filtros Avanzados (Sub Área y Puesto)", expanded=False):
+    # Filtros Avanzados
+    with st.expander("⚙️ Filtros Avanzados (Sub Área y Puesto)", expanded=False):
         fa1, fa2 = st.columns(2)
         with fa1:
             sel_subarea = st.multiselect("SUB ÁREA", get_opts('SUB AREA', df_filt), placeholder="Todas")
@@ -197,12 +191,12 @@ try:
     c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
     c4.metric("En Período de Prueba", f"{en_prueba}", delta=f"{pct_prueba:.1f}% de la estructura", delta_color="off")
 
-    # 7. NÓMINAS DESPLEGABLES
+    # 7. NÓMINAS DESPLEGABLES CON FORMATO CONDICIONAL
     posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
     col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
 
     if en_prueba > 0:
-        with st.expander(f"Detalle: {en_prueba} colaboradores en Período de Prueba", expanded=False):
+        with st.expander(f"⏳ Detalle: {en_prueba} colaboradores en Período de Prueba", expanded=False):
             df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['FECHA_ING_DT'] + pd.DateOffset(months=6)
             df_prueba['DÍAS RESTANTES'] = (df_prueba['VENCIMIENTO PRUEBA'] - fecha_corte).dt.days
             df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['VENCIMIENTO PRUEBA'].dt.strftime('%d/%m/%Y')
@@ -213,14 +207,15 @@ try:
             
             df_prueba_show = df_prueba[cols_prueba].sort_values(by='DÍAS RESTANTES', ascending=True)
             
+            # FUNCION DE ESTILADO: Rojo si Días Restantes < 30
             def highlight_urgent(row):
                 if row['DÍAS RESTANTES'] < 30:
-                    return ['background-color: #f1f5f9; color: #b91c1c; font-weight: 600'] * len(row)
+                    return ['background-color: #fee2e2; color: #991b1b; font-weight: bold'] * len(row)
                 return [''] * len(row)
                 
             st.dataframe(df_prueba_show.style.apply(highlight_urgent, axis=1), use_container_width=True)
 
-    with st.expander(f"Nómina completa: {dot_actual} colaboradores activos", expanded=False):
+    with st.expander(f"📋 Nómina completa: {dot_actual} colaboradores activos", expanded=False):
         if not df_periodo.empty:
             cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO']
             if col_nombre: cols_base.insert(1, col_nombre)
@@ -232,7 +227,7 @@ try:
     st.divider()
 
     # 8. GRÁFICOS DINÁMICOS
-    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Evolución de Crecimiento Neto</h3>", unsafe_allow_html=True)
+    st.subheader("Evolución de Crecimiento Neto")
     
     fecha_inicio_grafico = pd.to_datetime('2025-01-01')
     if fecha_corte >= fecha_inicio_grafico:
@@ -250,17 +245,17 @@ try:
                     7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
         
-        # Gráfica de línea sobria
+        # Gráfica de línea con colores adaptados
         fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-        fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), line=dict(color="#475569", width=2))
+        fig_evol.update_traces(textposition="top center", textfont_size=12, marker=dict(size=8, color="#3b82f6"), line=dict(color="#0f172a", width=2))
         fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
         fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
-        fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60), font=dict(color="#475569")) 
+        fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=80)) 
         
         st.plotly_chart(fig_evol, use_container_width=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Profundo de Variación</h3>", unsafe_allow_html=True)
+        st.subheader("Análisis Profundo de Variación")
         col_sel, _ = st.columns([1, 2])
         with col_sel:
             mes_drill = st.selectbox("Seleccione un mes para auditar:", df_historia['Mes_Esp'].tolist(), index=len(df_historia)-1)
@@ -279,7 +274,7 @@ try:
         cm3.metric("Crecimiento Neto", crec_neto, delta=crec_neto)
 
         if len(altas_mes) > 0 or len(bajas_mes) > 0:
-            tab_altas, tab_bajas = st.tabs(["Ingresos del Mes", "Bajas del Mes"])
+            tab_altas, tab_bajas = st.tabs(["🟢 Análisis de Ingresos", "🔴 Análisis de Bajas"])
             
             with tab_altas:
                 if len(altas_mes) > 0:
@@ -288,16 +283,9 @@ try:
                     total_a = res_a['Cant'].sum()
                     res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/total_a*100).round(1).astype(str) + "%)"
                     
-                    fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_corporativa)
-                    fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
+                    fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta')
+                    fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff')
                     st.plotly_chart(fig_a, use_container_width=True)
-                    
-                    # RESTAURADO: Expander de Ingresantes
-                    with st.expander("Ver nómina de colaboradores ingresantes"):
-                        cols_a = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c and c in altas_mes.columns]
-                        st.dataframe(altas_mes[cols_a], use_container_width=True)
-                else:
-                    st.info("No se registraron ingresos en este periodo.")
                     
             with tab_bajas:
                 if len(bajas_mes) > 0:
@@ -306,37 +294,29 @@ try:
                     total_b = res_b['Cant'].sum()
                     res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/total_b*100).round(1).astype(str) + "%)"
                     
-                    fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_corporativa)
-                    fig_b.update_layout(xaxis_title="", yaxis_title="Bajas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
+                    fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta')
+                    fig_b.update_layout(xaxis_title="", yaxis_title="Bajas", plot_bgcolor='#ffffff')
                     st.plotly_chart(fig_b, use_container_width=True)
-                    
-                    # RESTAURADO: Expander de Bajas
-                    with st.expander("Ver nómina de colaboradores dados de baja"):
-                        cols_b = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c and c in bajas_mes.columns]
-                        st.dataframe(bajas_mes[cols_b], use_container_width=True)
-                else:
-                    st.info("No se registraron bajas en este periodo.")
 
     st.divider()
 
     # 9. APERTURAS ESTRUCTURALES
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Estructura General por Empresa</h3>", unsafe_allow_html=True)
+        st.subheader("Estructura General por Empresa")
         df_emp = df_periodo.groupby('EMPRESA').size().reset_index(name='Cant')
         if not df_emp.empty:
             total_emp = df_emp['Cant'].sum()
             df_emp['Etiqueta'] = df_emp['Cant'].astype(str) + " (" + (df_emp['Cant']/total_emp*100).round(1).astype(str) + "%)"
-            fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color='EMPRESA', color_discrete_sequence=paleta_corporativa)
-            fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación", plot_bgcolor='#ffffff', showlegend=False, font=dict(color="#475569"))
+            fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color='EMPRESA')
+            fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación", plot_bgcolor='#ffffff', showlegend=False)
             st.plotly_chart(fig_emp, use_container_width=True)
         
     with col2:
-        st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Corte por Localidad</h3>", unsafe_allow_html=True)
+        st.subheader("Corte por Localidad")
         if not df_periodo.empty:
-            fig_loc = px.pie(df_periodo, names='LOCALIDAD', hole=0.4, color_discrete_sequence=paleta_corporativa)
+            fig_loc = px.pie(df_periodo, names='LOCALIDAD', hole=0.4)
             fig_loc.update_traces(textinfo='value+percent')
-            fig_loc.update_layout(font=dict(color="#475569"))
             st.plotly_chart(fig_loc, use_container_width=True)
 
 except Exception as e:
