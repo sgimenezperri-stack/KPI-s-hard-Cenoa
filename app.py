@@ -57,10 +57,9 @@ try:
     
     def get_opts(col): return sorted([x for x in df_raw[col].unique() if pd.notna(x)])
     sel_emp = st.sidebar.multiselect("Empresa", get_opts('EMPRESA'), default=get_opts('EMPRESA'))
-    sel_loc = st.sidebar.multiselect("Localidad", get_opts('LOCALIDAD'), default=get_opts('LOCALIDAD')) # Nuevo filtro
+    sel_loc = st.sidebar.multiselect("Localidad", get_opts('LOCALIDAD'), default=get_opts('LOCALIDAD'))
     sel_area = st.sidebar.multiselect("Área", get_opts('AREA'), default=get_opts('AREA'))
 
-    # Aplicamos todos los filtros de estructura
     df_universo = df_raw.copy()
     if sel_emp: df_universo = df_universo[df_universo['EMPRESA'].isin(sel_emp)]
     if sel_loc: df_universo = df_universo[df_universo['LOCALIDAD'].isin(sel_loc)]
@@ -69,7 +68,6 @@ try:
     def get_dotacion_a_fecha(df, fecha):
         return df[(df['FECHA_ING_DT'] <= fecha) & ((df['FECHA_EGR_DT'].isna()) | (df['FECHA_EGR_DT'] > fecha))]
 
-    # Obtenemos los activos exactos para el mes y los filtros seleccionados
     df_periodo = get_dotacion_a_fecha(df_universo, fecha_corte)
 
     # --- DASHBOARD PRINCIPAL ---
@@ -78,7 +76,6 @@ try:
     
     dot_actual = len(df_periodo)
     
-    # Cálculos para variaciones porcentuales
     mes_ant = mes_analisis - 1 if mes_analisis > 1 else 12
     anio_ant_calc = anio_analisis if mes_analisis > 1 else anio_analisis - 1
     ult_dia_ant = calendar.monthrange(anio_ant_calc, mes_ant)[1]
@@ -97,6 +94,25 @@ try:
     c1.metric("Dotación en Periodo", dot_actual)
     c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=f"{dif_mes} ({pct_mes:+.1f}%)")
     c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
+
+    # --- NUEVA UBICACIÓN: NÓMINA DESPLEGABLE DIRECTAMENTE BAJO LOS KPIs ---
+    with st.expander(f"📋 Ver nómina detallada de los {dot_actual} colaboradores activos", expanded=False):
+        if not df_periodo.empty:
+            # Búsqueda flexible de la columna de nombres
+            posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
+            col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
+            
+            # Construcción segura de columnas
+            cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO']
+            if col_nombre:
+                cols_base.insert(1, col_nombre) # Inserta el nombre después del CUIL si lo encuentra
+                
+            cols_nomina = [c for c in cols_base if c in df_periodo.columns]
+            sort_cols = [c for c in ['EMPRESA', 'AREA', col_nombre] if c and c in df_periodo.columns]
+            
+            st.dataframe(df_periodo[cols_nomina].sort_values(by=sort_cols), use_container_width=True)
+        else:
+            st.info("No hay colaboradores activos para los filtros seleccionados.")
 
     st.divider()
 
@@ -166,8 +182,9 @@ try:
                     st.plotly_chart(fig_a, use_container_width=True)
                     
                     with st.expander("Ver detalle de colaboradores ingresantes"):
-                        cols_show = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in altas_mes.columns]
-                        st.dataframe(altas_mes[cols_show], use_container_width=True)
+                        # Reutilizamos la búsqueda de nombre para esta tabla también
+                        cols_a = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c and c in altas_mes.columns]
+                        st.dataframe(altas_mes[cols_a], use_container_width=True)
                 else:
                     st.info("No se registraron ingresos en este periodo.")
                     
@@ -184,8 +201,8 @@ try:
                     st.plotly_chart(fig_b, use_container_width=True)
                     
                     with st.expander("Ver detalle de colaboradores dados de baja"):
-                        cols_show = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c in bajas_mes.columns]
-                        st.dataframe(bajas_mes[cols_show], use_container_width=True)
+                        cols_b = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c and c in bajas_mes.columns]
+                        st.dataframe(bajas_mes[cols_b], use_container_width=True)
                 else:
                     st.info("No se registraron bajas en este periodo.")
     else:
@@ -217,19 +234,6 @@ try:
         fig_sun = px.sunburst(df_periodo, path=['EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO'], color='EMPRESA')
         fig_sun.update_traces(textinfo='label+value+percent entry')
         st.plotly_chart(fig_sun, use_container_width=True)
-
-    st.divider()
-
-    # --- NUEVO: SÁBANA DE DATOS (NÓMINA ACTIVA) ---
-    st.subheader("📋 Nómina de Colaboradores Activos")
-    st.markdown(f"Listado detallado de los **{dot_actual}** colaboradores activos correspondientes a los filtros seleccionados.")
-    
-    with st.expander("Desplegar Nómina Completa", expanded=False):
-        if not df_periodo.empty:
-            cols_nomina = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in df_periodo.columns]
-            st.dataframe(df_periodo[cols_nomina].sort_values(by=['EMPRESA', 'AREA', 'APELLIDO Y NOMBRE']), use_container_width=True)
-        else:
-            st.info("No hay colaboradores activos para los filtros seleccionados en este periodo.")
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
