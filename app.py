@@ -30,7 +30,6 @@ def load_data():
     if 'EDAD' in df.columns:
         df['EDAD_NUM'] = df['EDAD'].str.extract(r'(\d+)').astype(float)
     
-    # Se añade SUB AREA a la limpieza de textos
     cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO']
     for c in cols_txt:
         if c in df.columns:
@@ -55,35 +54,48 @@ try:
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_analisis:02d}-{ultimo_dia}")
 
     st.sidebar.divider()
+    st.sidebar.markdown("**Filtros Estructurales**\n*(Dejar en blanco para incluir todas las opciones)*")
     
-    # Función segura por si alguna columna no existe en el Excel original
-    def get_opts(col): 
-        if col in df_raw.columns:
-            return sorted([x for x in df_raw[col].unique() if pd.notna(x)])
-        return []
+    # --- LÓGICA DE FILTROS EN CASCADA ---
+    df_filt = df_raw.copy()
+    
+    # 1. Empresa
+    opts_emp = sorted([x for x in df_filt['EMPRESA'].unique() if pd.notna(x)])
+    sel_emp = st.sidebar.multiselect("Empresa", opts_emp)
+    if sel_emp: 
+        df_filt = df_filt[df_filt['EMPRESA'].isin(sel_emp)]
+        
+    # 2. Localidad (Las opciones dependen de la empresa elegida arriba)
+    opts_loc = sorted([x for x in df_filt['LOCALIDAD'].unique() if pd.notna(x)])
+    sel_loc = st.sidebar.multiselect("Localidad", opts_loc)
+    if sel_loc: 
+        df_filt = df_filt[df_filt['LOCALIDAD'].isin(sel_loc)]
+        
+    # 3. Área
+    opts_area = sorted([x for x in df_filt['AREA'].unique() if pd.notna(x)])
+    sel_area = st.sidebar.multiselect("Área", opts_area)
+    if sel_area: 
+        df_filt = df_filt[df_filt['AREA'].isin(sel_area)]
+        
+    # 4. Sub Área
+    if 'SUB AREA' in df_filt.columns:
+        opts_sub = sorted([x for x in df_filt['SUB AREA'].unique() if pd.notna(x)])
+        sel_subarea = st.sidebar.multiselect("Sub Área", opts_sub)
+        if sel_subarea: 
+            df_filt = df_filt[df_filt['SUB AREA'].isin(sel_subarea)]
+    
+    # 5. Puesto
+    if 'PUESTO' in df_filt.columns:
+        opts_puesto = sorted([x for x in df_filt['PUESTO'].unique() if pd.notna(x)])
+        sel_puesto = st.sidebar.multiselect("Puesto", opts_puesto)
+        if sel_puesto: 
+            df_filt = df_filt[df_filt['PUESTO'].isin(sel_puesto)]
 
-    sel_emp = st.sidebar.multiselect("Empresa", get_opts('EMPRESA'), default=get_opts('EMPRESA'))
-    sel_loc = st.sidebar.multiselect("Localidad", get_opts('LOCALIDAD'), default=get_opts('LOCALIDAD'))
-    sel_area = st.sidebar.multiselect("Área", get_opts('AREA'), default=get_opts('AREA'))
-    # --- NUEVOS FILTROS ---
-    sel_subarea = st.sidebar.multiselect("Sub Área", get_opts('SUB AREA'), default=get_opts('SUB AREA'))
-    sel_puesto = st.sidebar.multiselect("Puesto", get_opts('PUESTO'), default=get_opts('PUESTO'))
-
-    # Aplicamos todos los filtros de estructura en cascada
-    df_universo = df_raw.copy()
-    if sel_emp: df_universo = df_universo[df_universo['EMPRESA'].isin(sel_emp)]
-    if sel_loc: df_universo = df_universo[df_universo['LOCALIDAD'].isin(sel_loc)]
-    if sel_area: df_universo = df_universo[df_universo['AREA'].isin(sel_area)]
-    # Aplicamos filtros nuevos
-    if sel_subarea and 'SUB AREA' in df_universo.columns: 
-        df_universo = df_universo[df_universo['SUB AREA'].isin(sel_subarea)]
-    if sel_puesto and 'PUESTO' in df_universo.columns: 
-        df_universo = df_universo[df_universo['PUESTO'].isin(sel_puesto)]
+    df_universo = df_filt.copy()
 
     def get_dotacion_a_fecha(df, fecha):
         return df[(df['FECHA_ING_DT'] <= fecha) & ((df['FECHA_EGR_DT'].isna()) | (df['FECHA_EGR_DT'] > fecha))]
 
-    # Obtenemos los activos exactos para el mes y los filtros seleccionados
     df_periodo = get_dotacion_a_fecha(df_universo, fecha_corte)
 
     # --- DASHBOARD PRINCIPAL ---
@@ -92,7 +104,7 @@ try:
     
     dot_actual = len(df_periodo)
     
-    # Cálculos para variaciones porcentuales
+    # Cálculos KPIs
     mes_ant = mes_analisis - 1 if mes_analisis > 1 else 12
     anio_ant_calc = anio_analisis if mes_analisis > 1 else anio_analisis - 1
     ult_dia_ant = calendar.monthrange(anio_ant_calc, mes_ant)[1]
@@ -107,10 +119,17 @@ try:
     dif_anio = int(dot_actual - dot_anio_ant)
     pct_anio = (dif_anio / dot_anio_ant * 100) if dot_anio_ant > 0 else 0
 
-    c1, c2, c3 = st.columns(3)
+    # CÁLCULO PERIODO DE PRUEBA (Menos de 6 meses de antigüedad)
+    fecha_limite_prueba = fecha_corte - pd.DateOffset(months=6)
+    en_prueba = len(df_periodo[df_periodo['FECHA_ING_DT'] > fecha_limite_prueba])
+    pct_prueba = (en_prueba / dot_actual * 100) if dot_actual > 0 else 0
+
+    # 4 Columnas para incluir el nuevo KPI
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Dotación en Periodo", dot_actual)
     c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=f"{dif_mes} ({pct_mes:+.1f}%)")
     c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
+    c4.metric("En Período de Prueba", f"{en_prueba}", delta=f"{pct_prueba:.1f}% de la estructura", delta_color="off")
 
     # --- NÓMINA DESPLEGABLE ---
     with st.expander(f"📋 Ver nómina detallada de los {dot_actual} colaboradores activos", expanded=False):
@@ -245,7 +264,6 @@ try:
 
     st.subheader("Explorador de Estructura (Activos en el mes)")
     if not df_periodo.empty:
-        # Añadimos SUB AREA al Sunburst de manera dinámica si existe
         path_sun = ['EMPRESA', 'LOCALIDAD', 'AREA']
         if 'SUB AREA' in df_periodo.columns: path_sun.append('SUB AREA')
         if 'PUESTO' in df_periodo.columns: path_sun.append('PUESTO')
