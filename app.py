@@ -13,8 +13,6 @@ CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2de
 def load_data():
     df = pd.read_csv(CSV_URL, dtype=str)
     df.columns = [str(c).strip().upper() for c in df.columns]
-    
-    # Mapeo y normalización de columnas clave
     df = df.rename(columns={
         'ÁREA': 'AREA', 
         'F. INGR': 'FECHA DE INGRESO',
@@ -26,20 +24,17 @@ def load_data():
         'MOTIVO': 'MOTIVO DE EGRESO'
     })
     
-    # Normalización de Fechas
     df['FECHA_ING_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
     df['FECHA_EGR_DT'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
     
     if 'EDAD' in df.columns:
         df['EDAD_NUM'] = df['EDAD'].str.extract(r'(\d+)').astype(float)
     
-    # Normalización de textos
     cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO']
     for c in cols_txt:
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], np.nan)
             
-    # FILTRO ESTRUCTURAL: Eliminar Practicantes
     if 'PUESTO' in df.columns:
         df = df[~df['PUESTO'].str.contains('PRACTICANTE', na=False)]
         
@@ -48,7 +43,7 @@ def load_data():
 try:
     df_raw = load_data()
 
-    # --- SIDEBAR (CONFIGURACIÓN) ---
+    # --- SIDEBAR ---
     st.sidebar.title("📈 Configuración")
     
     hoy = datetime.now()
@@ -64,12 +59,10 @@ try:
     sel_emp = st.sidebar.multiselect("Empresa", get_opts('EMPRESA'), default=get_opts('EMPRESA'))
     sel_area = st.sidebar.multiselect("Área", get_opts('AREA'), default=get_opts('AREA'))
 
-    # --- FILTRADO ESTRUCTURAL PREVIO ---
     df_universo = df_raw.copy()
     if sel_emp: df_universo = df_universo[df_universo['EMPRESA'].isin(sel_emp)]
     if sel_area: df_universo = df_universo[df_universo['AREA'].isin(sel_area)]
 
-    # --- RECONSTRUCCIÓN EXACTA ---
     def get_dotacion_a_fecha(df, fecha):
         return df[(df['FECHA_ING_DT'] <= fecha) & ((df['FECHA_EGR_DT'].isna()) | (df['FECHA_EGR_DT'] > fecha))]
 
@@ -81,20 +74,26 @@ try:
     
     dot_actual = len(df_periodo)
     
+    # Cálculos para variaciones porcentuales
     mes_ant = mes_analisis - 1 if mes_analisis > 1 else 12
     anio_ant_calc = anio_analisis if mes_analisis > 1 else anio_analisis - 1
     ult_dia_ant = calendar.monthrange(anio_ant_calc, mes_ant)[1]
     fecha_mes_ant = pd.to_datetime(f"{anio_ant_calc}-{mes_ant:02d}-{ult_dia_ant}")
     dot_mes_ant = len(get_dotacion_a_fecha(df_universo, fecha_mes_ant))
+    dif_mes = int(dot_actual - dot_mes_ant)
+    pct_mes = (dif_mes / dot_mes_ant * 100) if dot_mes_ant > 0 else 0
     
     ult_dia_inter = calendar.monthrange(anio_analisis - 1, mes_analisis)[1]
     fecha_anio_ant = pd.to_datetime(f"{anio_analisis - 1}-{mes_analisis:02d}-{ult_dia_inter}")
     dot_anio_ant = len(get_dotacion_a_fecha(df_universo, fecha_anio_ant))
+    dif_anio = int(dot_actual - dot_anio_ant)
+    pct_anio = (dif_anio / dot_anio_ant * 100) if dot_anio_ant > 0 else 0
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Dotación en Periodo", dot_actual)
-    c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=int(dot_actual - dot_mes_ant))
-    c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=int(dot_actual - dot_anio_ant))
+    # KPIs enriquecidos con porcentaje
+    c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=f"{dif_mes} ({pct_mes:+.1f}%)")
+    c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
 
     st.divider()
 
@@ -125,7 +124,7 @@ try:
         
         st.plotly_chart(fig_evol, use_container_width=True)
 
-        # --- ANÁLISIS DRILL-DOWN MENSUAL PROFESIONALIZADO ---
+        # --- ANÁLISIS DRILL-DOWN MENSUAL ---
         st.subheader("🔍 Análisis Profundo de Variación")
         st.markdown("Selecciona el mes en el menú desplegable para auditar las altas y bajas por Sede y Área.")
         
@@ -155,8 +154,11 @@ try:
                 if len(altas_mes) > 0:
                     altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
                     res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                    # Cálculo de % para etiqueta
+                    total_a = res_a['Cant'].sum()
+                    res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/total_a*100).round(1).astype(str) + "%)"
                     
-                    fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text_auto=True, 
+                    fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', 
                                    title=f"Distribución de Ingresos por Sede ({mes_drill})")
                     fig_a.update_layout(xaxis_title="", yaxis_title="Cantidad de Altas")
                     st.plotly_chart(fig_a, use_container_width=True)
@@ -171,14 +173,16 @@ try:
                 if len(bajas_mes) > 0:
                     bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
                     res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                    # Cálculo de % para etiqueta
+                    total_b = res_b['Cant'].sum()
+                    res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/total_b*100).round(1).astype(str) + "%)"
                     
-                    fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text_auto=True, 
+                    fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', 
                                    title=f"Distribución de Bajas por Sede ({mes_drill})")
                     fig_b.update_layout(xaxis_title="", yaxis_title="Cantidad de Bajas")
                     st.plotly_chart(fig_b, use_container_width=True)
                     
                     with st.expander("Ver detalle de colaboradores dados de baja"):
-                        # AQUÍ ESTÁ LA MAGIA: Se agregó 'MOTIVO DE EGRESO' a la lista visual
                         cols_show = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c in bajas_mes.columns]
                         st.dataframe(bajas_mes[cols_show], use_container_width=True)
                 else:
@@ -188,18 +192,31 @@ try:
 
     st.divider()
 
-    # --- APERTURAS ---
+    # --- APERTURAS ESTRUCTURALES ---
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Estructura General por Empresa")
         df_emp = df_periodo.groupby('EMPRESA').size().reset_index(name='Cant')
-        st.plotly_chart(px.bar(df_emp, x='EMPRESA', y='Cant', text_auto=True, color='EMPRESA'), use_container_width=True)
+        # Añadimos el cálculo porcentual al gráfico de empresas principal
+        total_emp = df_emp['Cant'].sum()
+        df_emp['Etiqueta'] = df_emp['Cant'].astype(str) + " (" + (df_emp['Cant']/total_emp*100).round(1).astype(str) + "%)"
+        
+        fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color='EMPRESA')
+        fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación")
+        st.plotly_chart(fig_emp, use_container_width=True)
+        
     with col2:
         st.subheader("Corte por Localidad")
-        st.plotly_chart(px.pie(df_periodo, names='LOCALIDAD', hole=0.3), use_container_width=True)
+        fig_loc = px.pie(df_periodo, names='LOCALIDAD', hole=0.3)
+        # Forzamos la visualización de valor entero + porcentaje en el anillo
+        fig_loc.update_traces(textinfo='value+percent')
+        st.plotly_chart(fig_loc, use_container_width=True)
 
     st.subheader("Explorador de Estructura (Activos en el mes)")
-    st.plotly_chart(px.sunburst(df_periodo, path=['EMPRESA', 'AREA', 'PUESTO'], color='EMPRESA'), use_container_width=True)
+    fig_sun = px.sunburst(df_periodo, path=['EMPRESA', 'AREA', 'PUESTO'], color='EMPRESA')
+    # El Sunburst también lo adaptamos para que el tooltip sea más rico
+    fig_sun.update_traces(textinfo='label+value+percent entry')
+    st.plotly_chart(fig_sun, use_container_width=True)
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
