@@ -34,7 +34,7 @@ def load_data():
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], np.nan)
             
-    # 1. FILTRO ESTRUCTURAL: Eliminar Practicantes de todo el análisis
+    # FILTRO ESTRUCTURAL: Eliminar Practicantes
     if 'PUESTO' in df.columns:
         df = df[~df['PUESTO'].str.contains('PRACTICANTE', na=False)]
         
@@ -120,47 +120,63 @@ try:
         
         st.plotly_chart(fig_evol, use_container_width=True)
 
-        # --- NUEVO: ANÁLISIS DRILL-DOWN MENSUAL ---
+        # --- ANÁLISIS DRILL-DOWN MENSUAL PROFESIONALIZADO ---
         st.subheader("🔍 Análisis Profundo de Variación")
-        st.markdown("¿Notaste un pico en el gráfico? Selecciona el mes para descubrir qué áreas o empresas impulsaron el crecimiento.")
+        st.markdown("Selecciona el mes en el menú desplegable para auditar las altas y bajas por Sede y Área.")
         
         col_sel, _ = st.columns([1, 2])
         with col_sel:
             mes_drill = st.selectbox("Seleccione un mes para auditar:", df_historia['Mes_Esp'].tolist(), index=len(df_historia)-1)
             
-        # Obtenemos la fecha exacta del mes seleccionado en el combo
         fecha_elegida = df_historia.loc[df_historia['Mes_Esp'] == mes_drill, 'Fecha'].iloc[0]
         
-        # Filtramos quién ingresó (Alta) y quién se fue (Baja) exactamente en ese mes y año
         altas_mes = df_universo[(df_universo['FECHA_ING_DT'].dt.year == fecha_elegida.year) & 
-                                (df_universo['FECHA_ING_DT'].dt.month == fecha_elegida.month)]
+                                (df_universo['FECHA_ING_DT'].dt.month == fecha_elegida.month)].copy()
                                 
         bajas_mes = df_universo[(df_universo['FECHA_EGR_DT'].dt.year == fecha_elegida.year) & 
-                                (df_universo['FECHA_EGR_DT'].dt.month == fecha_elegida.month)]
+                                (df_universo['FECHA_EGR_DT'].dt.month == fecha_elegida.month)].copy()
         
         crec_neto = len(altas_mes) - len(bajas_mes)
 
-        # Mini-métricas del mes auditado
         cm1, cm2, cm3 = st.columns(3)
         cm1.metric(f"Altas en {mes_drill}", len(altas_mes))
         cm2.metric(f"Bajas en {mes_drill}", len(bajas_mes))
         cm3.metric("Crecimiento Neto del Mes", crec_neto, delta=crec_neto)
 
-        # Gráficos detallados por pestaña
         if len(altas_mes) > 0 or len(bajas_mes) > 0:
-            tab_altas, tab_bajas = st.tabs(["🟢 Dónde hubo Ingresos", "🔴 Dónde hubo Bajas"])
+            tab_altas, tab_bajas = st.tabs(["🟢 Análisis de Ingresos", "🔴 Análisis de Bajas"])
             
             with tab_altas:
                 if len(altas_mes) > 0:
-                    fig_a = px.histogram(altas_mes, x='EMPRESA', color='AREA', text_auto=True, title=f"Altas por Empresa y Área ({mes_drill})")
+                    # Crear columna combinada Empresa + Localidad
+                    altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
+                    res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                    
+                    fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text_auto=True, 
+                                   title=f"Distribución de Ingresos por Sede ({mes_drill})")
+                    fig_a.update_layout(xaxis_title="", yaxis_title="Cantidad de Altas")
                     st.plotly_chart(fig_a, use_container_width=True)
+                    
+                    with st.expander("Ver detalle de colaboradores ingresantes"):
+                        cols_show = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in altas_mes.columns]
+                        st.dataframe(altas_mes[cols_show], use_container_width=True)
                 else:
                     st.info("No se registraron ingresos en este periodo.")
                     
             with tab_bajas:
                 if len(bajas_mes) > 0:
-                    fig_b = px.histogram(bajas_mes, x='EMPRESA', color='AREA', text_auto=True, title=f"Bajas por Empresa y Área ({mes_drill})")
+                    # Crear columna combinada Empresa + Localidad
+                    bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
+                    res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                    
+                    fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text_auto=True, 
+                                   title=f"Distribución de Bajas por Sede ({mes_drill})")
+                    fig_b.update_layout(xaxis_title="", yaxis_title="Cantidad de Bajas")
                     st.plotly_chart(fig_b, use_container_width=True)
+                    
+                    with st.expander("Ver detalle de colaboradores dados de baja"):
+                        cols_show = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO'] if c in bajas_mes.columns]
+                        st.dataframe(bajas_mes[cols_show], use_container_width=True)
                 else:
                     st.info("No se registraron bajas en este periodo.")
     else:
