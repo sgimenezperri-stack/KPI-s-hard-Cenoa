@@ -56,35 +56,29 @@ try:
     st.sidebar.divider()
     st.sidebar.markdown("**Filtros Estructurales**\n*(Dejar en blanco para incluir todas las opciones)*")
     
-    # --- LÓGICA DE FILTROS EN CASCADA ---
     df_filt = df_raw.copy()
     
-    # 1. Empresa
     opts_emp = sorted([x for x in df_filt['EMPRESA'].unique() if pd.notna(x)])
     sel_emp = st.sidebar.multiselect("Empresa", opts_emp)
     if sel_emp: 
         df_filt = df_filt[df_filt['EMPRESA'].isin(sel_emp)]
         
-    # 2. Localidad (Las opciones dependen de la empresa elegida arriba)
     opts_loc = sorted([x for x in df_filt['LOCALIDAD'].unique() if pd.notna(x)])
     sel_loc = st.sidebar.multiselect("Localidad", opts_loc)
     if sel_loc: 
         df_filt = df_filt[df_filt['LOCALIDAD'].isin(sel_loc)]
         
-    # 3. Área
     opts_area = sorted([x for x in df_filt['AREA'].unique() if pd.notna(x)])
     sel_area = st.sidebar.multiselect("Área", opts_area)
     if sel_area: 
         df_filt = df_filt[df_filt['AREA'].isin(sel_area)]
         
-    # 4. Sub Área
     if 'SUB AREA' in df_filt.columns:
         opts_sub = sorted([x for x in df_filt['SUB AREA'].unique() if pd.notna(x)])
         sel_subarea = st.sidebar.multiselect("Sub Área", opts_sub)
         if sel_subarea: 
             df_filt = df_filt[df_filt['SUB AREA'].isin(sel_subarea)]
     
-    # 5. Puesto
     if 'PUESTO' in df_filt.columns:
         opts_puesto = sorted([x for x in df_filt['PUESTO'].unique() if pd.notna(x)])
         sel_puesto = st.sidebar.multiselect("Puesto", opts_puesto)
@@ -104,7 +98,6 @@ try:
     
     dot_actual = len(df_periodo)
     
-    # Cálculos KPIs
     mes_ant = mes_analisis - 1 if mes_analisis > 1 else 12
     anio_ant_calc = anio_analisis if mes_analisis > 1 else anio_analisis - 1
     ult_dia_ant = calendar.monthrange(anio_ant_calc, mes_ant)[1]
@@ -119,28 +112,46 @@ try:
     dif_anio = int(dot_actual - dot_anio_ant)
     pct_anio = (dif_anio / dot_anio_ant * 100) if dot_anio_ant > 0 else 0
 
-    # CÁLCULO PERIODO DE PRUEBA (Menos de 6 meses de antigüedad)
+    # LÓGICA DE PERÍODO DE PRUEBA
     fecha_limite_prueba = fecha_corte - pd.DateOffset(months=6)
-    en_prueba = len(df_periodo[df_periodo['FECHA_ING_DT'] > fecha_limite_prueba])
+    df_prueba = df_periodo[df_periodo['FECHA_ING_DT'] > fecha_limite_prueba].copy()
+    en_prueba = len(df_prueba)
     pct_prueba = (en_prueba / dot_actual * 100) if dot_actual > 0 else 0
 
-    # 4 Columnas para incluir el nuevo KPI
+    # KPIs
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Dotación en Periodo", dot_actual)
     c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=f"{dif_mes} ({pct_mes:+.1f}%)")
     c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
     c4.metric("En Período de Prueba", f"{en_prueba}", delta=f"{pct_prueba:.1f}% de la estructura", delta_color="off")
 
-    # --- NÓMINA DESPLEGABLE ---
-    with st.expander(f"📋 Ver nómina detallada de los {dot_actual} colaboradores activos", expanded=False):
-        if not df_periodo.empty:
-            posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
-            col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
+    # --- NÓMINAS DESPLEGABLES ---
+    # Encontramos la columna de nombres de forma flexible
+    posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
+    col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
+
+    # 1. Expander de Período de Prueba
+    if en_prueba > 0:
+        with st.expander(f"⏳ Ver detalle de los {en_prueba} colaboradores en Período de Prueba", expanded=False):
+            # Calculamos Vencimientos y Días Restantes
+            df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['FECHA_ING_DT'] + pd.DateOffset(months=6)
+            df_prueba['DÍAS RESTANTES'] = (df_prueba['VENCIMIENTO PRUEBA'] - fecha_corte).dt.days
             
+            # Formateamos las fechas para visualización
+            df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['VENCIMIENTO PRUEBA'].dt.strftime('%d/%m/%Y')
+            
+            cols_prueba_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO', 'VENCIMIENTO PRUEBA', 'DÍAS RESTANTES']
+            if col_nombre: cols_prueba_base.insert(1, col_nombre)
+            cols_prueba = [c for c in cols_prueba_base if c in df_prueba.columns]
+            
+            # Mostramos ordenando por los que tienen menos días restantes (los más urgentes)
+            st.dataframe(df_prueba[cols_prueba].sort_values(by='DÍAS RESTANTES', ascending=True), use_container_width=True)
+
+    # 2. Expander de Nómina General
+    with st.expander(f"📋 Ver nómina detallada de los {dot_actual} colaboradores activos totales", expanded=False):
+        if not df_periodo.empty:
             cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO']
-            if col_nombre:
-                cols_base.insert(1, col_nombre)
-                
+            if col_nombre: cols_base.insert(1, col_nombre)
             cols_nomina = [c for c in cols_base if c in df_periodo.columns]
             sort_cols = [c for c in ['EMPRESA', 'AREA', col_nombre] if c and c in df_periodo.columns]
             
