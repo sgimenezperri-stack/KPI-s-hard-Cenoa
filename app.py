@@ -57,15 +57,19 @@ try:
     
     def get_opts(col): return sorted([x for x in df_raw[col].unique() if pd.notna(x)])
     sel_emp = st.sidebar.multiselect("Empresa", get_opts('EMPRESA'), default=get_opts('EMPRESA'))
+    sel_loc = st.sidebar.multiselect("Localidad", get_opts('LOCALIDAD'), default=get_opts('LOCALIDAD')) # Nuevo filtro
     sel_area = st.sidebar.multiselect("Área", get_opts('AREA'), default=get_opts('AREA'))
 
+    # Aplicamos todos los filtros de estructura
     df_universo = df_raw.copy()
     if sel_emp: df_universo = df_universo[df_universo['EMPRESA'].isin(sel_emp)]
+    if sel_loc: df_universo = df_universo[df_universo['LOCALIDAD'].isin(sel_loc)]
     if sel_area: df_universo = df_universo[df_universo['AREA'].isin(sel_area)]
 
     def get_dotacion_a_fecha(df, fecha):
         return df[(df['FECHA_ING_DT'] <= fecha) & ((df['FECHA_EGR_DT'].isna()) | (df['FECHA_EGR_DT'] > fecha))]
 
+    # Obtenemos los activos exactos para el mes y los filtros seleccionados
     df_periodo = get_dotacion_a_fecha(df_universo, fecha_corte)
 
     # --- DASHBOARD PRINCIPAL ---
@@ -91,7 +95,6 @@ try:
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Dotación en Periodo", dot_actual)
-    # KPIs enriquecidos con porcentaje
     c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=f"{dif_mes} ({pct_mes:+.1f}%)")
     c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
 
@@ -154,7 +157,6 @@ try:
                 if len(altas_mes) > 0:
                     altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
                     res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
-                    # Cálculo de % para etiqueta
                     total_a = res_a['Cant'].sum()
                     res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/total_a*100).round(1).astype(str) + "%)"
                     
@@ -173,7 +175,6 @@ try:
                 if len(bajas_mes) > 0:
                     bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
                     res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
-                    # Cálculo de % para etiqueta
                     total_b = res_b['Cant'].sum()
                     res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/total_b*100).round(1).astype(str) + "%)"
                     
@@ -197,26 +198,38 @@ try:
     with col1:
         st.subheader("Estructura General por Empresa")
         df_emp = df_periodo.groupby('EMPRESA').size().reset_index(name='Cant')
-        # Añadimos el cálculo porcentual al gráfico de empresas principal
-        total_emp = df_emp['Cant'].sum()
-        df_emp['Etiqueta'] = df_emp['Cant'].astype(str) + " (" + (df_emp['Cant']/total_emp*100).round(1).astype(str) + "%)"
-        
-        fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color='EMPRESA')
-        fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación")
-        st.plotly_chart(fig_emp, use_container_width=True)
+        if not df_emp.empty:
+            total_emp = df_emp['Cant'].sum()
+            df_emp['Etiqueta'] = df_emp['Cant'].astype(str) + " (" + (df_emp['Cant']/total_emp*100).round(1).astype(str) + "%)"
+            fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color='EMPRESA')
+            fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación")
+            st.plotly_chart(fig_emp, use_container_width=True)
         
     with col2:
         st.subheader("Corte por Localidad")
-        fig_loc = px.pie(df_periodo, names='LOCALIDAD', hole=0.3)
-        # Forzamos la visualización de valor entero + porcentaje en el anillo
-        fig_loc.update_traces(textinfo='value+percent')
-        st.plotly_chart(fig_loc, use_container_width=True)
+        if not df_periodo.empty:
+            fig_loc = px.pie(df_periodo, names='LOCALIDAD', hole=0.3)
+            fig_loc.update_traces(textinfo='value+percent')
+            st.plotly_chart(fig_loc, use_container_width=True)
 
     st.subheader("Explorador de Estructura (Activos en el mes)")
-    fig_sun = px.sunburst(df_periodo, path=['EMPRESA', 'AREA', 'PUESTO'], color='EMPRESA')
-    # El Sunburst también lo adaptamos para que el tooltip sea más rico
-    fig_sun.update_traces(textinfo='label+value+percent entry')
-    st.plotly_chart(fig_sun, use_container_width=True)
+    if not df_periodo.empty:
+        fig_sun = px.sunburst(df_periodo, path=['EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO'], color='EMPRESA')
+        fig_sun.update_traces(textinfo='label+value+percent entry')
+        st.plotly_chart(fig_sun, use_container_width=True)
+
+    st.divider()
+
+    # --- NUEVO: SÁBANA DE DATOS (NÓMINA ACTIVA) ---
+    st.subheader("📋 Nómina de Colaboradores Activos")
+    st.markdown(f"Listado detallado de los **{dot_actual}** colaboradores activos correspondientes a los filtros seleccionados.")
+    
+    with st.expander("Desplegar Nómina Completa", expanded=False):
+        if not df_periodo.empty:
+            cols_nomina = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in df_periodo.columns]
+            st.dataframe(df_periodo[cols_nomina].sort_values(by=['EMPRESA', 'AREA', 'APELLIDO Y NOMBRE']), use_container_width=True)
+        else:
+            st.info("No hay colaboradores activos para los filtros seleccionados en este periodo.")
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
