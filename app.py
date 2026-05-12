@@ -13,12 +13,17 @@ CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2de
 def load_data():
     df = pd.read_csv(CSV_URL, dtype=str)
     df.columns = [str(c).strip().upper() for c in df.columns]
+    
+    # Mapeo y normalización de columnas clave
     df = df.rename(columns={
         'ÁREA': 'AREA', 
         'F. INGR': 'FECHA DE INGRESO',
         'FECHA INGRESO': 'FECHA DE INGRESO',
         'F. EGRESO': 'FECHA DE EGRESO',
-        'FECHA EGRESO': 'FECHA DE EGRESO'
+        'FECHA EGRESO': 'FECHA DE EGRESO',
+        'MOTIVO EGRESO': 'MOTIVO DE EGRESO',
+        'MOTIVOS DE EGRESO': 'MOTIVO DE EGRESO',
+        'MOTIVO': 'MOTIVO DE EGRESO'
     })
     
     # Normalización de Fechas
@@ -29,7 +34,7 @@ def load_data():
         df['EDAD_NUM'] = df['EDAD'].str.extract(r'(\d+)').astype(float)
     
     # Normalización de textos
-    cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'ESTADO', 'PUESTO']
+    cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO']
     for c in cols_txt:
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], np.nan)
@@ -148,7 +153,6 @@ try:
             
             with tab_altas:
                 if len(altas_mes) > 0:
-                    # Crear columna combinada Empresa + Localidad
                     altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
                     res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
                     
@@ -165,7 +169,6 @@ try:
                     
             with tab_bajas:
                 if len(bajas_mes) > 0:
-                    # Crear columna combinada Empresa + Localidad
                     bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
                     res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
                     
@@ -175,7 +178,8 @@ try:
                     st.plotly_chart(fig_b, use_container_width=True)
                     
                     with st.expander("Ver detalle de colaboradores dados de baja"):
-                        cols_show = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO'] if c in bajas_mes.columns]
+                        # AQUÍ ESTÁ LA MAGIA: Se agregó 'MOTIVO DE EGRESO' a la lista visual
+                        cols_show = [c for c in ['CUIL', 'APELLIDO Y NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c in bajas_mes.columns]
                         st.dataframe(bajas_mes[cols_show], use_container_width=True)
                 else:
                     st.info("No se registraron bajas en este periodo.")
