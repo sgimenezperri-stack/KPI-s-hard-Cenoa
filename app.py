@@ -94,8 +94,8 @@ try:
     # --- GRÁFICO DINÁMICO DE CRECIMIENTO CON ETIQUETAS ---
     st.subheader("📈 Evolución de Crecimiento Neto")
     
-    # Generamos la serie histórica tomando siempre el FIN de cada mes ('M' en pandas)
-    rango_fechas = pd.date_range(start='2024-01-01', end=fecha_corte, freq='M')
+    # CORRECCIÓN AQUÍ: freq='ME' en lugar de freq='M'
+    rango_fechas = pd.date_range(start='2024-01-01', end=fecha_corte, freq='ME')
     historia = []
     for f in rango_fechas:
         historia.append({'Fecha': f, 'Dotación': len(get_dotacion_a_fecha(df_universo, f))})
