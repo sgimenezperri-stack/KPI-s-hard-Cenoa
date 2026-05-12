@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from datetime import datetime
+import calendar
 
 st.set_page_config(page_title="HC Analytics | Grupo Cenoa", layout="wide")
 
@@ -19,11 +20,13 @@ def load_data():
         'F. EGRESO': 'FECHA DE EGRESO',
         'FECHA EGRESO': 'FECHA DE EGRESO'
     })
+    
+    # Fechas
     df['FECHA_ING_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
     df['FECHA_EGR_DT'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
     
     if 'EDAD' in df.columns:
-        df['EDAD_NUM'] = df['EDAD'].str.extract('(\d+)').astype(float)
+        df['EDAD_NUM'] = df['EDAD'].str.extract(r'(\d+)').astype(float)
     
     cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'ESTADO']
     for c in cols_txt:
@@ -34,46 +37,51 @@ def load_data():
 try:
     df_raw = load_data()
 
-    # --- SIDEBAR ---
+    # --- SIDEBAR (CONFIGURACIÓN DE TIEMPO EXACTA) ---
     st.sidebar.title("📈 Configuración")
     
-    # Selectores de Tiempo
     hoy = datetime.now()
     anio_analisis = st.sidebar.selectbox("Año de Corte", [2026, 2025, 2024], index=0)
     mes_analisis = st.sidebar.slider("Mes de Corte", 1, 12, hoy.month)
-    fecha_corte = pd.to_datetime(datetime(anio_analisis, mes_analisis, 1))
+    
+    # NUEVA LÓGICA: Obtener el último día exacto del mes seleccionado
+    ultimo_dia = calendar.monthrange(anio_analisis, mes_analisis)[1]
+    fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_analisis:02d}-{ultimo_dia}")
 
     st.sidebar.divider()
     
-    # Filtros de Estructura
     def get_opts(col): return sorted([x for x in df_raw[col].unique() if pd.notna(x)])
     sel_emp = st.sidebar.multiselect("Empresa", get_opts('EMPRESA'), default=get_opts('EMPRESA'))
     sel_area = st.sidebar.multiselect("Área", get_opts('AREA'), default=get_opts('AREA'))
 
     # --- FILTRADO ESTRUCTURAL PREVIO ---
-    # Filtramos el universo total por empresa y área antes de calcular la historia
     df_universo = df_raw.copy()
     if sel_emp: df_universo = df_universo[df_universo['EMPRESA'].isin(sel_emp)]
     if sel_area: df_universo = df_universo[df_universo['AREA'].isin(sel_area)]
 
-    # --- RECONSTRUCCIÓN DE DOTACIÓN ---
+    # --- RECONSTRUCCIÓN EXACTA (FIN DE MES) ---
     def get_dotacion_a_fecha(df, fecha):
+        # Ingresó antes o el mismo día del corte Y (no tiene baja O su baja es posterior al corte)
         return df[(df['FECHA_ING_DT'] <= fecha) & ((df['FECHA_EGR_DT'].isna()) | (df['FECHA_EGR_DT'] > fecha))]
 
     df_periodo = get_dotacion_a_fecha(df_universo, fecha_corte)
 
     # --- DASHBOARD ---
-    st.title(f"👥 Análisis de Dotación: {mes_analisis}/{anio_analisis}")
+    st.title(f"👥 Análisis de Dotación: Fin de {mes_analisis}/{anio_analisis}")
+    st.caption(f"Cálculo exacto al {ultimo_dia}/{mes_analisis:02d}/{anio_analisis}")
     
-    # KPIs con Variaciones
     dot_actual = len(df_periodo)
     
-    # Variación vs Mes Anterior
-    fecha_mes_ant = fecha_corte - pd.DateOffset(months=1)
+    # Variación vs Mes Anterior (Exacto a fin de mes)
+    mes_ant = mes_analisis - 1 if mes_analisis > 1 else 12
+    anio_ant_calc = anio_analisis if mes_analisis > 1 else anio_analisis - 1
+    ult_dia_ant = calendar.monthrange(anio_ant_calc, mes_ant)[1]
+    fecha_mes_ant = pd.to_datetime(f"{anio_ant_calc}-{mes_ant:02d}-{ult_dia_ant}")
     dot_mes_ant = len(get_dotacion_a_fecha(df_universo, fecha_mes_ant))
     
-    # Variación vs Año Anterior (Interanual)
-    fecha_anio_ant = fecha_corte - pd.DateOffset(years=1)
+    # Variación vs Año Anterior (Interanual a fin de mes)
+    ult_dia_inter = calendar.monthrange(anio_analisis - 1, mes_analisis)[1]
+    fecha_anio_ant = pd.to_datetime(f"{anio_analisis - 1}-{mes_analisis:02d}-{ult_dia_inter}")
     dot_anio_ant = len(get_dotacion_a_fecha(df_universo, fecha_anio_ant))
 
     c1, c2, c3 = st.columns(3)
@@ -83,11 +91,11 @@ try:
 
     st.divider()
 
-    # --- GRÁFICO DINÁMICO DE CRECIMIENTO ---
-    st.subheader("📈 Evolución de Crecimiento Neto (Filtrado)")
+    # --- GRÁFICO DINÁMICO DE CRECIMIENTO CON ETIQUETAS ---
+    st.subheader("📈 Evolución de Crecimiento Neto")
     
-    # Generamos la serie histórica basada solo en el universo filtrado
-    rango_fechas = pd.date_range(start='2024-01-01', end=datetime.now(), freq='MS')
+    # Generamos la serie histórica tomando siempre el FIN de cada mes ('M' en pandas)
+    rango_fechas = pd.date_range(start='2024-01-01', end=fecha_corte, freq='M')
     historia = []
     for f in rango_fechas:
         historia.append({'Fecha': f, 'Dotación': len(get_dotacion_a_fecha(df_universo, f))})
@@ -95,7 +103,9 @@ try:
     df_historia = pd.DataFrame(historia)
     
     fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-    fig_evol.update_traces(textposition="top center") # Muestra etiquetas de datos
+    # Ajuste de etiquetas para que siempre se vean y no se superpongan con la línea
+    fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=8))
+    fig_evol.update_layout(yaxis_title="Cantidad de Colaboradores", xaxis_title="")
     st.plotly_chart(fig_evol, use_container_width=True)
 
     # --- APERTURAS ---
@@ -103,7 +113,7 @@ try:
     with col1:
         st.subheader("Corte por Empresa")
         df_emp = df_periodo.groupby('EMPRESA').size().reset_index(name='Cant')
-        st.plotly_chart(px.bar(df_emp, x='EMPRESA', y='Cant', text_auto=True), use_container_width=True)
+        st.plotly_chart(px.bar(df_emp, x='EMPRESA', y='Cant', text_auto=True, color='EMPRESA'), use_container_width=True)
     with col2:
         st.subheader("Corte por Localidad")
         st.plotly_chart(px.pie(df_periodo, names='LOCALIDAD', hole=0.3), use_container_width=True)
