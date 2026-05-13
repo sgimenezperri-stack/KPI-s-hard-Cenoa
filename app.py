@@ -248,7 +248,8 @@ try:
         if not df_chart_ant.empty:
             res_ant = df_chart_ant['RANGO_ANTIGUEDAD'].value_counts().reindex(labels_ant).reset_index(name='CANTIDAD')
             res_ant['ETIQUETA'] = res_ant['CANTIDAD'].astype(str) + " (" + (res_ant['CANTIDAD']/res_ant['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
-            fig_ant = px.bar(res_ant, x='RANGO', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[1]])
+            # SOLUCIÓN DEL ERROR AQUÍ ABAJO:
+            fig_ant = px.bar(res_ant, x='RANGO_ANTIGUEDAD', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[1]])
             fig_ant.update_traces(hovertemplate="<b>Rango: %{x}</b><br>Colaboradores: %{text}<extra></extra>")
             fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
             draw_safe_interactive_chart(fig_ant, "k_ant")
@@ -259,11 +260,12 @@ try:
             df_chart_lid = cross_filter('lid')
             if not df_chart_lid.empty:
                 df_lider = df_chart_lid.groupby(col_lider).size().reset_index(name='CANTIDAD')
-                df_lider = df_lider[df_lider[col_lider] != 'NO DECLARADO'].sort_values('CANTIDAD', ascending=False).head(10)
+                df_lider = df_lider[df_lider[col_lider] != 'NAN'].sort_values('CANTIDAD', ascending=False).head(10)
                 fig_lid = px.bar(df_lider, y=col_lider, x='CANTIDAD', text='CANTIDAD', orientation='h', color_discrete_sequence=[paleta_neutra[2]])
                 fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
                 fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_lid, "k_lid")
+        else: st.info("No se detectó columna 'LIDER' o 'JEFE'.")
 
     df_tabla_final = cross_filter('none')
     filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else ""] if f]
