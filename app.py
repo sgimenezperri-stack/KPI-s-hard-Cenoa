@@ -194,7 +194,7 @@ try:
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
-    # Pre-cálculos compartidos
+    # Pre-cálculos compartidos de Historia (Para Dotación y Rotación)
     if es_acumulado:
         fecha_inicio_historia = pd.to_datetime('2025-01-01')
     else:
@@ -469,25 +469,25 @@ try:
                     else:
                         st.markdown(f"<div style='background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #15803d; font-weight: 600; font-size: 14px; margin: 0;'>✅ Excelente retención: Ningún talento promovido o reubicado en este periodo se ha dado de baja.</p></div>", unsafe_allow_html=True)
 
-                    sel_click_tipo = None
-                    if 'k_tipo' in st.session_state and isinstance(st.session_state.k_tipo, dict) and st.session_state.k_tipo.get('selection', {}).get('points'):
-                        sel_click_tipo = st.session_state.k_tipo['selection']['points'][0].get('label')
+                    sel_click_tipo_mov = None
+                    if 'k_tipo_mov' in st.session_state and isinstance(st.session_state.k_tipo_mov, dict) and st.session_state.k_tipo_mov.get('selection', {}).get('points'):
+                        sel_click_tipo_mov = st.session_state.k_tipo_mov['selection']['points'][0].get('label')
 
                     col_m1, col_m2 = st.columns(2)
                     
                     with col_m1:
                         st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Distribución de Movimientos</h4>", unsafe_allow_html=True)
                         if 'TIPO_MOV' in df_mov_periodo.columns:
-                            res_tipo = df_mov_periodo.groupby('TIPO_MOV').size().reset_index(name='CANTIDAD')
-                            fig_tipo = px.pie(res_tipo, names='TIPO_MOV', values='CANTIDAD', hole=0.4, color_discrete_sequence=paleta_neutra)
-                            fig_tipo.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Cantidad: %{value} (%{percent})<extra></extra>")
-                            fig_tipo.update_layout(font=dict(color="#475569"), margin=dict(t=10))
-                            draw_safe_interactive_chart(fig_tipo, "k_tipo")
+                            res_tipo_mov = df_mov_periodo.groupby('TIPO_MOV').size().reset_index(name='CANTIDAD')
+                            fig_tipo_mov = px.pie(res_tipo_mov, names='TIPO_MOV', values='CANTIDAD', hole=0.4, color_discrete_sequence=paleta_neutra)
+                            fig_tipo_mov.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Cantidad: %{value} (%{percent})<extra></extra>")
+                            fig_tipo_mov.update_layout(font=dict(color="#475569"), margin=dict(t=10))
+                            draw_safe_interactive_chart(fig_tipo_mov, "k_tipo_mov")
                     
                     with col_m2:
-                        if sel_click_tipo:
-                            df_eval = df_mov_periodo[df_mov_periodo['TIPO_MOV'] == sel_click_tipo].copy()
-                            titulo_eval = f"Evaluación de Potencial en: {sel_click_tipo}"
+                        if sel_click_tipo_mov:
+                            df_eval = df_mov_periodo[df_mov_periodo['TIPO_MOV'] == sel_click_tipo_mov].copy()
+                            titulo_eval = f"Evaluación de Potencial en: {sel_click_tipo_mov}"
                         else:
                             df_promo_default = df_mov_periodo[df_mov_periodo['TIPO_MOV'].str.contains('PROMOC', na=False, case=False)]
                             if not df_promo_default.empty:
@@ -515,9 +515,9 @@ try:
                         cols_mov = [c for c in ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV', 'EMP_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'POTENCIAL'] if c in df_mov_periodo.columns]
                         df_show_mov = df_mov_periodo.copy()
                         
-                        if sel_click_tipo:
-                            df_show_mov = df_show_mov[df_show_mov['TIPO_MOV'] == sel_click_tipo]
-                            st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro activo:</b> Mostrando solo {sel_click_tipo}</div>", unsafe_allow_html=True)
+                        if sel_click_tipo_mov:
+                            df_show_mov = df_show_mov[df_show_mov['TIPO_MOV'] == sel_click_tipo_mov]
+                            st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro activo:</b> Mostrando solo {sel_click_tipo_mov}</div>", unsafe_allow_html=True)
                             
                         st.dataframe(df_show_mov.sort_values(by='FECHA_MOV_DT', ascending=False)[cols_mov], use_container_width=True)
                 else:
@@ -539,13 +539,13 @@ try:
         else:
             fecha_inicio_rot = pd.to_datetime(f"{anio_analisis}-{mes_calc:02d}-01")
             
-        # 2. Cálculo de Dotación Promedio
+        # 2. Cálculo de Dotación Promedio Global
         dot_inicial_rot = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_rot))])
-        dot_final_rot = dot_actual # Ya calculada globalmente para fecha_corte
+        dot_final_rot = dot_actual 
         dot_promedio_rot = (dot_inicial_rot + dot_final_rot) / 2
         dot_promedio_calc = dot_promedio_rot if dot_promedio_rot > 0 else 1
         
-        # 3. Cálculo de Bajas
+        # 3. Cálculo de Bajas Globales
         bajas_periodo_rot = df_filt[(df_filt['FECHA_EGR_DT'] >= fecha_inicio_rot) & (df_filt['FECHA_EGR_DT'] <= fecha_corte)].copy()
         tot_bajas_rot = len(bajas_periodo_rot)
         rot_total_pct = (tot_bajas_rot / dot_promedio_calc) * 100
@@ -565,42 +565,103 @@ try:
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
         
-        cr1, cr2, cr3, cr4 = st.columns(4)
-        cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos en total")
-        cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias identificadas", delta_color="inverse")
-        cr3.metric("Rot. Voluntaria Temprana", f"{rot_vol_temp_pct:.1f}%", f"{tot_bajas_vol_temp_rot} renuncias antes del año", delta_color="inverse")
-        cr4.metric("Dotación Promedio", f"{dot_promedio_rot:.1f}", f"Inicial: {dot_inicial_rot} | Final: {dot_final_rot}", delta_color="off")
+        # 5. Segmentación: STAFF (La Luz) vs OPERACIÓN (El resto)
+        # --- STAFF ---
+        df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
+        dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_rot))])
+        dot_fin_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_corte) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] > fecha_corte))])
+        prom_staff = (dot_ini_staff + dot_fin_staff) / 2
+        prom_staff_calc = prom_staff if prom_staff > 0 else 1
+        bajas_staff = len(bajas_periodo_rot[bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
+        rot_staff_pct = (bajas_staff / prom_staff_calc) * 100
+        
+        # --- OPERACIÓN ---
+        df_op = df_filt[~df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
+        dot_ini_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] >= fecha_inicio_rot))])
+        dot_fin_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_corte) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] > fecha_corte))])
+        prom_op = (dot_ini_op + dot_fin_op) / 2
+        prom_op_calc = prom_op if prom_op > 0 else 1
+        bajas_op = len(bajas_periodo_rot[~bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
+        rot_op_pct = (bajas_op / prom_op_calc) * 100
+        
+        # --- RENDER KPIs ---
+        cr1, cr2, cr3 = st.columns(3)
+        cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos")
+        cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias", delta_color="inverse")
+        cr3.metric("Rot. Voluntaria Temprana", f"{rot_vol_temp_pct:.1f}%", f"{tot_bajas_vol_temp_rot} renuncias < 1 año", delta_color="inverse")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        cr4, cr5, cr6 = st.columns(3)
+        cr4.metric("Dotación Promedio Global", f"{dot_promedio_rot:.1f}", f"Inicial: {dot_inicial_rot} | Final: {dot_final_rot}", delta_color="off")
+        cr5.metric("Rotación de STAFF (La Luz)", f"{rot_staff_pct:.1f}%", f"{bajas_staff} bajas (Promedio: {prom_staff:.1f})")
+        cr6.metric("Rotación de OPERACIÓN", f"{rot_op_pct:.1f}%", f"{bajas_op} bajas (Promedio: {prom_op:.1f})")
         
         st.divider()
         
-        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de la Tasa de Rotación Total</h4>", unsafe_allow_html=True)
+        # --- EVOLUCIÓN HISTÓRICA DE ROTACIÓN (3 PESTAÑAS) ---
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Rotación</h4>", unsafe_allow_html=True)
         if not df_historia.empty:
             tasas_rotacion_hist = []
+            tasas_vol_hist = []
+            tasas_temprana_hist = []
+            
             for f in df_historia['Fecha']:
                 mes_f = f.month
                 ano_f = f.year
                 ini_mes_f = pd.to_datetime(f"{ano_f}-{mes_f:02d}-01")
+                
                 d_ini = len(df_filt[(df_filt['FECHA_ING_DT'] <= ini_mes_f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= ini_mes_f))])
                 d_fin = len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])
                 prom = (d_ini + d_fin) / 2
-                if prom == 0: prom = 1
-                b = len(df_filt[(df_filt['FECHA_EGR_DT'] >= ini_mes_f) & (df_filt['FECHA_EGR_DT'] <= f)])
-                tasas_rotacion_hist.append((b / prom) * 100)
+                prom_c = prom if prom > 0 else 1
+                
+                bajas_m = df_filt[(df_filt['FECHA_EGR_DT'] >= ini_mes_f) & (df_filt['FECHA_EGR_DT'] <= f)]
+                b_tot = len(bajas_m)
+                
+                bajas_v = bajas_m[bajas_m['MOTIVO DE EGRESO'].str.contains('RENUNCIA|VOLUNTARI', na=False, case=False)]
+                b_vol = len(bajas_v)
+                
+                bajas_v_temp = bajas_v[(bajas_v['FECHA_EGR_DT'] - bajas_v['FECHA_ING_DT']).dt.days <= 365]
+                b_temp = len(bajas_v_temp)
+                
+                tasas_rotacion_hist.append((b_tot / prom_c) * 100)
+                tasas_vol_hist.append((b_vol / prom_c) * 100)
+                tasas_temprana_hist.append((b_temp / prom_c) * 100)
                 
             df_hist_rot = df_historia.copy()
-            df_hist_rot['TASA_ROT'] = tasas_rotacion_hist
+            df_hist_rot['TASA_TOTAL'] = tasas_rotacion_hist
+            df_hist_rot['TASA_VOL'] = tasas_vol_hist
+            df_hist_rot['TASA_TEMP'] = tasas_temprana_hist
             
-            fig_rot_evol = px.line(df_hist_rot, x='Fecha', y='TASA_ROT', markers=True, text='TASA_ROT')
-            fig_rot_evol.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', 
-                                   marker=dict(size=7, color="#b91c1c"), line=dict(color="#ef4444", width=2), hovertemplate="<b>%{text:.1f}% Rotación</b><extra></extra>")
-            fig_rot_evol.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
-            fig_rot_evol.update_yaxes(title="Tasa de Rotación (%)", showgrid=True, gridcolor='#f1f5f9')
-            fig_rot_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=300) 
-            st.plotly_chart(fig_rot_evol, use_container_width=True)
+            tab_rot_tot, tab_rot_vol, tab_rot_temp = st.tabs(["Rotación Total", "Rotación Voluntaria", "Rotación Temprana (< 1 año)"])
+            
+            with tab_rot_tot:
+                fig_rt = px.line(df_hist_rot, x='Fecha', y='TASA_TOTAL', markers=True)
+                fig_rt.update_traces(marker=dict(size=7, color="#b91c1c"), line=dict(color="#ef4444", width=2), hovertemplate="<b>%{y:.1f}% Rotación Total</b><extra></extra>")
+                fig_rt.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
+                fig_rt.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
+                fig_rt.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
+                st.plotly_chart(fig_rt, use_container_width=True)
+                
+            with tab_rot_vol:
+                fig_rv = px.line(df_hist_rot, x='Fecha', y='TASA_VOL', markers=True)
+                fig_rv.update_traces(marker=dict(size=7, color="#c2410c"), line=dict(color="#f97316", width=2), hovertemplate="<b>%{y:.1f}% Rotación Voluntaria</b><extra></extra>")
+                fig_rv.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
+                fig_rv.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
+                fig_rv.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
+                st.plotly_chart(fig_rv, use_container_width=True)
+                
+            with tab_rot_temp:
+                fig_rtemp = px.line(df_hist_rot, x='Fecha', y='TASA_TEMP', markers=True)
+                fig_rtemp.update_traces(marker=dict(size=7, color="#a16207"), line=dict(color="#eab308", width=2), hovertemplate="<b>%{y:.1f}% Rotación Temprana</b><extra></extra>")
+                fig_rtemp.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
+                fig_rtemp.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
+                fig_rtemp.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
+                st.plotly_chart(fig_rtemp, use_container_width=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- CAPTURA DE CLICS EN ROTACIÓN ---
+        # --- DESGLOSE DE LA ROTACIÓN (INTERACTIVO) ---
         sel_rot_tipo = None
         if 'k_rot_tipo' in st.session_state and isinstance(st.session_state.k_rot_tipo, dict) and st.session_state.k_rot_tipo.get('selection', {}).get('points'):
             sel_rot_tipo = st.session_state.k_rot_tipo['selection']['points'][0].get('label')
@@ -624,7 +685,7 @@ try:
                 st.info("No se registraron bajas en el periodo para analizar su composición.")
                 
         with col_r2:
-            st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top 7 Áreas con Mayor Fuga Voluntaria</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top Áreas con Mayor Fuga Voluntaria</h4>", unsafe_allow_html=True)
             if tot_bajas_vol_rot > 0:
                 res_area_vol = bajas_voluntarias_rot.groupby('AREA').size().reset_index(name='CANTIDAD').sort_values('CANTIDAD', ascending=False).head(7)
                 fig_area_vol = px.bar(res_area_vol, x='CANTIDAD', y='AREA', orientation='h', text='CANTIDAD', color_discrete_sequence=[paleta_neutra[1]])
@@ -660,14 +721,6 @@ try:
                 st.dataframe(df_show_rot[cols_rot_show].rename(columns={'FECHA_EGR_STR': 'FECHA EGRESO'}), use_container_width=True)
             else:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
-
-        # --- ALERTA DE ROTACIÓN TEMPRANA ORIGINAL ---
-        if tot_bajas_vol_temp_rot > 0:
-            with st.expander(f"⚠️ Alerta Crítica: Ver detalle de {tot_bajas_vol_temp_rot} colaboradores con renuncia temprana (< 1 año)", expanded=False):
-                bajas_vol_temp_rot['FECHA_ING_STR'] = bajas_vol_temp_rot['FECHA_ING_DT'].dt.strftime('%d/%m/%Y')
-                bajas_vol_temp_rot['FECHA_EGR_STR'] = bajas_vol_temp_rot['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
-                cols_to_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA_ING_STR', 'FECHA_EGR_STR', 'ANTIGUEDAD_DIAS_EGR'] if c in bajas_vol_temp_rot.columns]
-                st.dataframe(bajas_vol_temp_rot[cols_to_show].rename(columns={'FECHA_ING_STR': 'INGRESO', 'FECHA_EGR_STR': 'EGRESO', 'ANTIGUEDAD_DIAS_EGR': 'DÍAS TRABAJADOS'}).sort_values('DÍAS TRABAJADOS'), use_container_width=True)
 
 except Exception as e:
     st.error(f"Error técnico general: {e}")
