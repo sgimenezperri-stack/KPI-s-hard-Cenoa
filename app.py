@@ -270,6 +270,7 @@ try:
                 fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
                 fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_lid, "k_lid")
+        else: st.info("No se detectó columna 'LIDER' o 'JEFE'.")
 
     df_tabla_final = cross_filter('none')
     filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else ""] if f]
@@ -360,13 +361,13 @@ try:
         df_mov = load_data_mov()
         
         if 'FECHA_MOV_DT' in df_mov.columns:
-            df_mov_periodo = df_mov[(df_mov['FECHA_MOV_DT'].dt.year == anio_analisis) & (df_mov['FECHA_MOV_DT'].dt.month <= mes_analisis)]
+            # INTERACCIÓN ESTRICTA CON AÑO Y MES DEL SELECTOR PRINCIPAL
+            df_mov_periodo = df_mov[(df_mov['FECHA_MOV_DT'].dt.year == anio_analisis) & (df_mov['FECHA_MOV_DT'].dt.month == mes_analisis)]
             
             if not df_mov_periodo.empty:
-                st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
+                st.markdown(f"<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
                 st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en el gráfico de torta (Ej: Promoción) para auditar los resultados de sus evaluaciones.</p>", unsafe_allow_html=True)
 
-                # --- CAPTURA DEL CLIC EN LA TORTA DE MOVIMIENTOS ---
                 sel_click_tipo = None
                 if 'k_tipo' in st.session_state and isinstance(st.session_state.k_tipo, dict) and st.session_state.k_tipo.get('selection', {}).get('points'):
                     sel_click_tipo = st.session_state.k_tipo['selection']['points'][0].get('label')
@@ -383,12 +384,10 @@ try:
                         draw_safe_interactive_chart(fig_tipo, "k_tipo")
                 
                 with col_m2:
-                    # --- FILTRO DINÁMICO SEGÚN EL CLIC ---
                     if sel_click_tipo:
                         df_eval = df_mov_periodo[df_mov_periodo['TIPO_MOV'] == sel_click_tipo].copy()
                         titulo_eval = f"Evaluación de Potencial en: {sel_click_tipo}"
                     else:
-                        # Si no hay clic, por defecto mostramos las Promociones
                         df_promo_default = df_mov_periodo[df_mov_periodo['TIPO_MOV'].str.contains('PROMOC', na=False, case=False)]
                         if not df_promo_default.empty:
                             df_eval = df_promo_default.copy()
@@ -415,14 +414,14 @@ try:
                     cols_mov = [c for c in ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV', 'EMP_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'POTENCIAL'] if c in df_mov_periodo.columns]
                     df_show_mov = df_mov_periodo.copy()
                     
-                    # Filtramos la tabla también si el usuario hizo clic
                     if sel_click_tipo:
                         df_show_mov = df_show_mov[df_show_mov['TIPO_MOV'] == sel_click_tipo]
                         st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro activo:</b> Mostrando solo {sel_click_tipo}</div>", unsafe_allow_html=True)
                         
-                    st.dataframe(df_show_mov[cols_mov].sort_values(by='FECHA_MOV_DT', ascending=False), use_container_width=True)
+                    # CORRECCIÓN DEFINITIVA: Ordenar primero por fecha, luego filtrar columnas visibles.
+                    st.dataframe(df_show_mov.sort_values(by='FECHA_MOV_DT', ascending=False)[cols_mov], use_container_width=True)
             else:
-                st.info("No hay registros de movimientos internos en el rango seleccionado.")
+                st.info("No hay registros de movimientos internos en el mes y año seleccionados.")
         else:
             st.warning("No se detectó la columna de Fechas en la pestaña de Movimientos.")
     except Exception as e:
