@@ -223,7 +223,7 @@ try:
     st.divider()
 
     # =====================================================================
-    # 5. CROSS-FILTERING DASHBOARD (AHORA CON CATEGORÍA)
+    # 5. CROSS-FILTERING DASHBOARD
     # =====================================================================
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
     
@@ -316,9 +316,9 @@ try:
     st.divider()
 
     # =====================================================================
-    # 6. ANÁLISIS MENSUAL DE ROTACIÓN
+    # 6. ANÁLISIS MENSUAL DE ROTACIÓN E HISTÓRICO
     # =====================================================================
-    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Evolución Histórica y Rotación Mensual</h3>", unsafe_allow_html=True)
     
     fecha_inicio_grafico = pd.to_datetime('2025-01-01')
     rango_fechas = pd.date_range(start=fecha_inicio_grafico if fecha_corte >= fecha_inicio_grafico else fecha_corte.replace(month=1, day=1), end=fecha_corte, freq='ME')
@@ -328,6 +328,16 @@ try:
         df_historia = pd.DataFrame(historia)
         meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
+        
+        # --- RESTAURACIÓN DEL GRÁFICO DE EVOLUCIÓN HISTÓRICA ---
+        fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
+        fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
+                               line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
+        fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
+        fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
+        fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60), font=dict(color="#475569")) 
+        st.plotly_chart(fig_evol, use_container_width=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
         opciones_meses = ["Acumulado del Año (Todos)"] + df_historia['Mes_Esp'].tolist()
         
