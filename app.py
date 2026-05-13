@@ -11,7 +11,6 @@ st.set_page_config(page_title="Dotación | Talent Hub", layout="wide", initial_s
 # 2. INYECCIÓN DE CSS (DISEÑO CORPORATIVO Y NEUTRO)
 st.markdown("""
     <style>
-    /* Tipografía y fondos */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     html, body, [class*="css"]  {
         font-family: 'Inter', sans-serif;
@@ -19,8 +18,6 @@ st.markdown("""
     .stApp {
         background-color: #f8fafc;
     }
-    
-    /* Encabezados y textos */
     h1, h2, h3 {
         color: #1e293b !important; 
     }
@@ -38,8 +35,6 @@ st.markdown("""
         text-transform: uppercase;
         margin-bottom: 20px;
     }
-    
-    /* Estilo de Tarjetas de Métricas (KPIs) */
     [data-testid="metric-container"] {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -54,8 +49,6 @@ st.markdown("""
     [data-testid="metric-container"] div {
         color: #1e293b !important;
     }
-    
-    /* Ajustes de separadores y contenedores */
     hr {
         border-color: #e2e8f0;
     }
@@ -67,7 +60,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# PALETA DE COLORES NEUTRA Y PROFESIONAL
+# PALETA DE COLORES NEUTRA
 paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a', '#e2e8f0']
 
 # 3. LECTURA Y LIMPIEZA DE DATOS
@@ -122,7 +115,6 @@ try:
     
     df_filt = df_raw.copy()
     
-    # Filtros de Tiempo y Cálculo Principal
     with f4:
         anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
     with f5:
@@ -131,18 +123,15 @@ try:
     ultimo_dia = calendar.monthrange(anio_analisis, mes_analisis)[1]
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_analisis:02d}-{ultimo_dia}")
 
-    # --- CÁLCULOS AVANZADOS PREVIOS A LOS FILTROS ---
-    # 1. Calculamos la Antigüedad
+    # Cálculos previos de Antigüedad y Líder para que impacten en filtros
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
     labels_ant = ['< 1 año', '1 a 3 años', '3 a 5 años', '5 a 10 años', '+ 10 años']
     df_filt['RANGO_ANTIGUEDAD'] = pd.cut(df_filt['ANTIGUEDAD_AÑOS'], bins=bins_ant, labels=labels_ant)
     
-    # 2. Identificamos la columna de Líder
     posibles_lideres = ['LIDER', 'JEFE', 'SUPERVISOR', 'REPORTA A', 'ENCARGADO', 'GERENTE']
     col_lider = next((c for c in df_filt.columns if c in posibles_lideres), None)
 
-    # --- APLICACIÓN DE FILTROS ---
     def get_opts(col, df): 
         if col in df.columns: return sorted([x for x in df[col].unique() if pd.notna(x)])
         return []
@@ -159,7 +148,6 @@ try:
         sel_area = st.multiselect("ÁREA", get_opts('AREA', df_filt), placeholder="Todas")
         if sel_area: df_filt = df_filt[df_filt['AREA'].isin(sel_area)]
 
-    # Filtros Avanzados Enriquecidos
     with st.expander("Filtros Avanzados (Sub Área, Puesto, Antigüedad, Líder)", expanded=False):
         fa1, fa2, fa3, fa4 = st.columns(4)
         with fa1:
@@ -183,6 +171,13 @@ try:
 
     df_periodo = get_dotacion_a_fecha(df_universo, fecha_corte).copy()
     dot_actual = len(df_periodo)
+
+    # Definimos columnas de nómina globalmente para usarlas al hacer clic en los gráficos
+    posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
+    col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
+    cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO']
+    if col_nombre: cols_base.insert(1, col_nombre)
+    cols_nomina = [c for c in cols_base if c in df_periodo.columns]
 
     # 6. CÁLCULO DE KPIS
     mes_ant = mes_analisis - 1 if mes_analisis > 1 else 12
@@ -212,9 +207,6 @@ try:
     c4.metric("En Período de Prueba", f"{en_prueba}", delta=f"{pct_prueba:.1f}% de la estructura", delta_color="off")
 
     # 7. NÓMINAS DESPLEGABLES CON FORMATO CONDICIONAL
-    posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
-    col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
-
     if en_prueba > 0:
         with st.expander(f"Detalle: {en_prueba} colaboradores en Período de Prueba", expanded=False):
             df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['FECHA_ING_DT'] + pd.DateOffset(months=6)
@@ -236,11 +228,7 @@ try:
 
     with st.expander(f"Nómina completa: {dot_actual} colaboradores activos", expanded=False):
         if not df_periodo.empty:
-            cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO']
-            if col_nombre: cols_base.insert(1, col_nombre)
-            cols_nomina = [c for c in cols_base if c in df_periodo.columns]
             sort_cols = [c for c in ['EMPRESA', 'AREA', col_nombre] if c and c in df_periodo.columns]
-            
             st.dataframe(df_periodo[cols_nomina].sort_values(by=sort_cols), use_container_width=True)
 
     st.divider()
@@ -333,7 +321,9 @@ try:
 
     st.divider()
 
-    # 9. APERTURAS ESTRUCTURALES Y NUEVOS GRÁFICOS
+    # 9. GRÁFICOS CLICKEABLES
+    st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en cualquier barra o porción de los gráficos inferiores para ver la nómina exacta de esa categoría.</p>", unsafe_allow_html=True)
+    
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Estructura por Empresa</h3>", unsafe_allow_html=True)
@@ -344,7 +334,16 @@ try:
             fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color='EMPRESA', color_discrete_sequence=paleta_neutra)
             fig_emp.update_traces(hovertemplate="<b>%{x}</b><br>Dotación: %{text}<extra></extra>")
             fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación", plot_bgcolor='#ffffff', showlegend=False, font=dict(color="#475569"))
-            st.plotly_chart(fig_emp, use_container_width=True)
+            
+            try:
+                # Captura de Clic
+                evt_emp = st.plotly_chart(fig_emp, use_container_width=True, on_select="rerun")
+                if evt_emp and evt_emp.get('selection', {}).get('points'):
+                    cli_val = evt_emp['selection']['points'][0].get('x')
+                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Nómina de {cli_val}</b></div>", unsafe_allow_html=True)
+                    st.dataframe(df_periodo[df_periodo['EMPRESA'] == cli_val][cols_nomina], use_container_width=True)
+            except TypeError:
+                st.plotly_chart(fig_emp, use_container_width=True)
         
     with col2:
         st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Corte por Localidad</h3>", unsafe_allow_html=True)
@@ -352,12 +351,21 @@ try:
             fig_loc = px.pie(df_periodo, names='LOCALIDAD', hole=0.4, color_discrete_sequence=paleta_neutra)
             fig_loc.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Dotación: %{value} (%{percent})<extra></extra>")
             fig_loc.update_layout(font=dict(color="#475569"))
-            st.plotly_chart(fig_loc, use_container_width=True)
+            
+            try:
+                # Captura de Clic
+                evt_loc = st.plotly_chart(fig_loc, use_container_width=True, on_select="rerun")
+                if evt_loc and evt_loc.get('selection', {}).get('points'):
+                    pt = evt_loc['selection']['points'][0]
+                    cli_val = pt.get('label', pt.get('x'))
+                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Nómina en {cli_val}</b></div>", unsafe_allow_html=True)
+                    st.dataframe(df_periodo[df_periodo['LOCALIDAD'] == cli_val][cols_nomina], use_container_width=True)
+            except TypeError:
+                st.plotly_chart(fig_loc, use_container_width=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     col3, col4 = st.columns(2)
 
-    # GRÁFICO: DISTRIBUCIÓN POR ANTIGÜEDAD + BUSCADOR
     with col3:
         st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Distribución por Antigüedad</h3>", unsafe_allow_html=True)
         if not df_periodo.empty:
@@ -369,17 +377,17 @@ try:
             fig_ant = px.bar(res_ant, x='RANGO', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[1]])
             fig_ant.update_traces(hovertemplate="<b>Rango: %{x}</b><br>Colaboradores: %{text}<extra></extra>")
             fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-            st.plotly_chart(fig_ant, use_container_width=True)
+            
+            try:
+                # Captura de Clic
+                evt_ant = st.plotly_chart(fig_ant, use_container_width=True, on_select="rerun")
+                if evt_ant and evt_ant.get('selection', {}).get('points'):
+                    cli_val = evt_ant['selection']['points'][0].get('x')
+                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Nómina de Antigüedad: {cli_val}</b></div>", unsafe_allow_html=True)
+                    st.dataframe(df_periodo[df_periodo['RANGO_ANTIGUEDAD'] == cli_val][cols_nomina], use_container_width=True)
+            except TypeError:
+                st.plotly_chart(fig_ant, use_container_width=True)
 
-            # Buscador Interactivo de Nómina por Antigüedad
-            st.markdown("<h4 style='font-size: 13px; font-weight: 600; color: #64748b;'>🔍 Consultar Nómina por Rango</h4>", unsafe_allow_html=True)
-            rango_buscado = st.selectbox("Seleccione un rango para ver el detalle:", options=[""] + labels_ant, key="sel_rango")
-            if rango_buscado:
-                df_rango = df_periodo[df_periodo['RANGO_ANTIGUEDAD'] == rango_buscado]
-                cols_rango = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in df_rango.columns]
-                st.dataframe(df_rango[cols_rango].sort_values('EMPRESA'), use_container_width=True)
-
-    # GRÁFICO: SPAN OF CONTROL (LÍDERES) + BUSCADOR
     with col4:
         st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Top 10 Colaboradores por Líder</h3>", unsafe_allow_html=True)
         if col_lider and not df_periodo.empty:
@@ -387,20 +395,20 @@ try:
             df_lider = df_lider[df_lider[col_lider] != 'NAN'].sort_values('CANTIDAD', ascending=False).head(10)
             
             fig_lid = px.bar(df_lider, y=col_lider, x='CANTIDAD', text='CANTIDAD', orientation='h', color_discrete_sequence=[paleta_neutra[0]])
-            fig_lid.update_traces(hovertemplate="<b>%{y}</b><br>Personas a cargo: %{x}<extra></extra>")
+            fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
             fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas a cargo", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-            st.plotly_chart(fig_lid, use_container_width=True)
-
-            # Buscador Interactivo de Nómina por Líder
-            st.markdown("<h4 style='font-size: 13px; font-weight: 600; color: #64748b;'>🔍 Consultar Equipo por Líder</h4>", unsafe_allow_html=True)
-            opts_lid_busq = sorted([x for x in df_periodo[col_lider].unique() if pd.notna(x)])
-            lider_buscado = st.selectbox("Escriba o seleccione el nombre del líder:", options=[""] + opts_lid_busq, key="sel_lider_inf")
-            if lider_buscado:
-                df_equipo = df_periodo[df_periodo[col_lider] == lider_buscado]
-                cols_eq = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in df_equipo.columns]
-                st.dataframe(df_equipo[cols_eq].sort_values('EMPRESA'), use_container_width=True)
+            
+            try:
+                # Captura de Clic
+                evt_lid = st.plotly_chart(fig_lid, use_container_width=True, on_select="rerun")
+                if evt_lid and evt_lid.get('selection', {}).get('points'):
+                    cli_val = evt_lid['selection']['points'][0].get('y')
+                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Equipo a cargo de: {cli_val}</b></div>", unsafe_allow_html=True)
+                    st.dataframe(df_periodo[df_periodo[col_lider] == cli_val][cols_nomina], use_container_width=True)
+            except TypeError:
+                st.plotly_chart(fig_lid, use_container_width=True)
         else:
-            st.info("No se detectó una columna de Jefatura (Ej: 'LIDER', 'JEFE', 'REPORTA A') en la base de datos.")
+            st.info("Asegúrate de tener una columna llamada 'LIDER' o 'JEFE' en tu base.")
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
