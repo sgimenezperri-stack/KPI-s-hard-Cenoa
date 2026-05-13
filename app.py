@@ -189,6 +189,11 @@ try:
     if col_nombre: cols_base.insert(1, col_nombre)
     cols_nomina = [c for c in cols_base if c in df_periodo.columns]
     
+    # Motor de interactividad centralizado
+    def draw_safe_interactive_chart(fig, unique_key):
+        try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
+        except TypeError: return st.plotly_chart(fig, use_container_width=True)
+
     # Pre-cálculos compartidos
     if es_acumulado:
         fecha_inicio_historia = pd.to_datetime('2025-01-01')
@@ -209,7 +214,7 @@ try:
     tab_dotacion, tab_rotacion = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención"])
 
     # ---------------------------------------------------------------------
-    # TAB 1: DOTACIÓN Y ESTRUCTURA (LO EXISTENTE)
+    # TAB 1: DOTACIÓN Y ESTRUCTURA
     # ---------------------------------------------------------------------
     with tab_dotacion:
         mes_ant_calc = mes_calc - 1 if mes_calc > 1 else 12
@@ -260,10 +265,6 @@ try:
                 st.dataframe(df_show_nomina[cols_nomina].sort_values(by=sort_cols), use_container_width=True)
 
         st.divider()
-
-        def draw_safe_interactive_chart(fig, unique_key):
-            try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
-            except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
         sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria = None, None, None, None, None
         if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
@@ -527,7 +528,7 @@ try:
             st.error(f"Error al cargar módulo de movimientos. Detalle técnico: {e}")
 
     # ---------------------------------------------------------------------
-    # TAB 2: ROTACIÓN Y RETENCIÓN (NUEVO MÓDULO)
+    # TAB 2: ROTACIÓN Y RETENCIÓN
     # ---------------------------------------------------------------------
     with tab_rotacion:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación (Fórmula: Egresos / Dotación Promedio)</h3>", unsafe_allow_html=True)
@@ -564,7 +565,6 @@ try:
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
         
-        # Rendir KPIs
         cr1, cr2, cr3, cr4 = st.columns(4)
         cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos en total")
         cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias identificadas", delta_color="inverse")
@@ -573,7 +573,6 @@ try:
         
         st.divider()
         
-        # --- EVOLUCIÓN HISTÓRICA DE ROTACIÓN ---
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de la Tasa de Rotación Total</h4>", unsafe_allow_html=True)
         if not df_historia.empty:
             tasas_rotacion_hist = []
@@ -601,7 +600,15 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- DESGLOSE DE LA ROTACIÓN ---
+        # --- CAPTURA DE CLICS EN ROTACIÓN ---
+        sel_rot_tipo = None
+        if 'k_rot_tipo' in st.session_state and isinstance(st.session_state.k_rot_tipo, dict) and st.session_state.k_rot_tipo.get('selection', {}).get('points'):
+            sel_rot_tipo = st.session_state.k_rot_tipo['selection']['points'][0].get('label')
+
+        sel_rot_area = None
+        if 'k_rot_area' in st.session_state and isinstance(st.session_state.k_rot_area, dict) and st.session_state.k_rot_area.get('selection', {}).get('points'):
+            sel_rot_area = st.session_state.k_rot_area['selection']['points'][0].get('y')
+
         col_r1, col_r2 = st.columns(2)
         
         with col_r1:
@@ -612,7 +619,7 @@ try:
                 fig_tipo = px.pie(res_tipo, names='TIPO_BAJA', values='CANTIDAD', hole=0.4, color_discrete_sequence=['#ef4444', paleta_neutra[2]])
                 fig_tipo.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Bajas: %{value} (%{percent})<extra></extra>")
                 fig_tipo.update_layout(font=dict(color="#475569"), margin=dict(t=10))
-                st.plotly_chart(fig_tipo, use_container_width=True)
+                draw_safe_interactive_chart(fig_tipo, "k_rot_tipo")
             else:
                 st.info("No se registraron bajas en el periodo para analizar su composición.")
                 
@@ -623,11 +630,38 @@ try:
                 fig_area_vol = px.bar(res_area_vol, x='CANTIDAD', y='AREA', orientation='h', text='CANTIDAD', color_discrete_sequence=[paleta_neutra[1]])
                 fig_area_vol.update_traces(hovertemplate="<b>Área: %{y}</b><br>Renuncias: %{text}<extra></extra>")
                 fig_area_vol.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="Renuncias", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
-                st.plotly_chart(fig_area_vol, use_container_width=True)
+                draw_safe_interactive_chart(fig_area_vol, "k_rot_area")
             else:
                 st.info("No se registraron renuncias voluntarias en el periodo.")
 
-        # --- DETALLE ROTACIÓN TEMPRANA ---
+        # --- NUEVA NÓMINA INTERACTIVA DE BAJAS ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>↳ Detalle Interactivo de Bajas</h4>", unsafe_allow_html=True)
+
+        if tot_bajas_rot > 0:
+            df_show_rot = bajas_periodo_rot.copy()
+            filtros_rot = []
+            
+            if sel_rot_tipo:
+                df_show_rot = df_show_rot[df_show_rot['TIPO_BAJA'] == sel_rot_tipo]
+                filtros_rot.append(f"Tipo: {sel_rot_tipo}")
+            if sel_rot_area:
+                df_show_rot = df_show_rot[df_show_rot['AREA'] == sel_rot_area]
+                filtros_rot.append(f"Área: {sel_rot_area}")
+
+            if filtros_rot:
+                st.markdown(f"<div style='background:#fef2f2; padding:15px; border-radius:8px; border-left: 4px solid #ef4444; margin-bottom:15px;'><b>Filtro activo ({len(df_show_rot)} resultados):</b> {' | '.join(filtros_rot)}</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para filtrar esta tabla y auditar detalles específicos.</p>", unsafe_allow_html=True)
+
+            if not df_show_rot.empty:
+                df_show_rot['FECHA_EGR_STR'] = df_show_rot['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
+                cols_rot_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA_EGR_STR', 'MOTIVO DE EGRESO'] if c in df_show_rot.columns]
+                st.dataframe(df_show_rot[cols_rot_show].rename(columns={'FECHA_EGR_STR': 'FECHA EGRESO'}), use_container_width=True)
+            else:
+                st.info("No hay registros que coincidan con la selección de los gráficos.")
+
+        # --- ALERTA DE ROTACIÓN TEMPRANA ORIGINAL ---
         if tot_bajas_vol_temp_rot > 0:
             with st.expander(f"⚠️ Alerta Crítica: Ver detalle de {tot_bajas_vol_temp_rot} colaboradores con renuncia temprana (< 1 año)", expanded=False):
                 bajas_vol_temp_rot['FECHA_ING_STR'] = bajas_vol_temp_rot['FECHA_ING_DT'].dt.strftime('%d/%m/%Y')
