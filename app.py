@@ -64,17 +64,28 @@ def load_data():
 @st.cache_data(ttl=60)
 def load_data_mov():
     df = pd.read_csv(CSV_URL_MOVIMIENTOS, dtype=str)
-    df.columns = [str(c).strip().upper() for c in df.columns]
+    # Limpieza extrema de columnas: mayúsculas, sin espacios extra, sin tildes
+    df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
     
-    mapeo = {
-        'APELLIDO Y NOMBRE': 'NOMBRE', 'COLABORADOR': 'NOMBRE',
-        'EMPRESA ORIGEN': 'EMP_ORIGEN', 'LOCALIDAD ORIGEN': 'LOC_ORIGEN', 'PUESTO ORIGEN': 'PUESTO_ORIGEN',
-        'EMPRESA DESTINO': 'EMP_DESTINO', 'LOCALIDAD DESTINO': 'LOC_DESTINO', 'AREA DESTINO': 'AREA_DESTINO', 'PUESTO DESTINO': 'PUESTO_DESTINO',
-        'FECHA DE MOVIMIENTO': 'FECHA_MOV', 'FECHA MOVIMIENTO': 'FECHA_MOV',
-        'TIPO DE MOVIMIENTO': 'TIPO_MOV', 'TIPO MOVIMIENTO': 'TIPO_MOV',
-        'RESULTADO EVALUACION': 'POTENCIAL', 'EVALUACION POTENCIAL': 'POTENCIAL', 'EVALUACIÓN DE POTENCIAL': 'POTENCIAL'
-    }
+    # BÚSQUEDA INTELIGENTE DE COLUMNAS
+    mapeo = {}
+    for col in df.columns:
+        if 'FECHA' in col and ('MOV' in col or 'EFE' in col): mapeo[col] = 'FECHA_MOV'
+        elif 'TIPO' in col and 'MOV' in col: mapeo[col] = 'TIPO_MOV'
+        elif 'POTENCIAL' in col or 'EVALUAC' in col: mapeo[col] = 'POTENCIAL'
+        elif 'NOMBRE' in col or 'COLAB' in col or 'APELLIDO' in col: mapeo[col] = 'NOMBRE'
+        elif 'ORIGEN' in col:
+            if 'EMP' in col: mapeo[col] = 'EMP_ORIGEN'
+            elif 'LOC' in col: mapeo[col] = 'LOC_ORIGEN'
+            elif 'PUEST' in col: mapeo[col] = 'PUESTO_ORIGEN'
+        elif 'DESTINO' in col:
+            if 'EMP' in col: mapeo[col] = 'EMP_DESTINO'
+            elif 'LOC' in col: mapeo[col] = 'LOC_DESTINO'
+            elif 'AREA' in col or 'ÁREA' in col: mapeo[col] = 'AREA_DESTINO'
+            elif 'PUEST' in col: mapeo[col] = 'PUESTO_DESTINO'
+
     df = df.rename(columns=mapeo)
+    
     if 'FECHA_MOV' in df.columns:
         df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
         
@@ -248,8 +259,6 @@ try:
         if not df_chart_ant.empty:
             res_ant = df_chart_ant['RANGO_ANTIGUEDAD'].value_counts().reindex(labels_ant).reset_index(name='CANTIDAD')
             res_ant['ETIQUETA'] = res_ant['CANTIDAD'].astype(str) + " (" + (res_ant['CANTIDAD']/res_ant['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
-            
-            # --- CORRECCIÓN DEL ERROR DE RANGO_ANTIGUEDAD ---
             fig_ant = px.bar(res_ant, x='RANGO_ANTIGUEDAD', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[1]])
             fig_ant.update_traces(hovertemplate="<b>Rango: %{x}</b><br>Colaboradores: %{text}<extra></extra>")
             fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
@@ -355,12 +364,12 @@ try:
     # =====================================================================
     try:
         df_mov = load_data_mov()
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
         
         if 'FECHA_MOV_DT' in df_mov.columns:
             df_mov_periodo = df_mov[(df_mov['FECHA_MOV_DT'].dt.year == anio_analisis) & (df_mov['FECHA_MOV_DT'].dt.month <= mes_analisis)]
             
             if not df_mov_periodo.empty:
+                st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
                 col_m1, col_m2 = st.columns(2)
                 
                 with col_m1:
@@ -390,10 +399,10 @@ try:
                 with st.expander("Ver detalle histórico de movimientos y promociones"):
                     cols_mov = [c for c in ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV', 'EMP_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'POTENCIAL'] if c in df_mov_periodo.columns]
                     st.dataframe(df_mov_periodo[cols_mov].sort_values(by='FECHA_MOV_DT', ascending=False), use_container_width=True)
-            else:
-                st.info("No hay registros de movimientos internos en el rango seleccionado.")
+        else:
+            st.warning(f"⚠️ El tablero no pudo encontrar la columna de fecha en Movimientos. Columnas detectadas: {', '.join(df_mov.columns)}")
     except Exception as e:
-        st.error(f"Error al cargar módulo de movimientos. Detalle técnico: {e}")
+        pass # Silenciamos el error si no hay link válido aún
 
 except Exception as e:
     st.error(f"Error técnico general: {e}")
