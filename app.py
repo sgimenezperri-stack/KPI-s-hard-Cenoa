@@ -223,38 +223,28 @@ try:
     st.divider()
 
     # =====================================================================
-    # 4.5. EVOLUCIÓN HISTÓRICA (NUEVA UBICACIÓN)
+    # 5. CROSS-FILTERING DASHBOARD & EVOLUCIÓN HISTÓRICA
     # =====================================================================
-    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Evolución de la Dotación (YTD)</h3>", unsafe_allow_html=True)
-    
-    fecha_inicio_grafico = pd.to_datetime(f"{anio_analisis}-01-01")
-    rango_fechas = pd.date_range(start=fecha_inicio_grafico, end=fecha_corte, freq='ME')
-    historia = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas]
-    
-    df_historia = pd.DataFrame()
-    if historia:
-        df_historia = pd.DataFrame(historia)
-        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
-        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
-        
-        fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-        fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
-                               line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
-        fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
-        fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
-        fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=300) 
-        st.plotly_chart(fig_evol, use_container_width=True)
-
-    st.divider()
-
-    # =====================================================================
-    # 5. CROSS-FILTERING DASHBOARD
-    # =====================================================================
-    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos de Estructura (Cross-Filtering)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos de Estructura</h3>", unsafe_allow_html=True)
     
     def draw_safe_interactive_chart(fig, unique_key):
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
+
+    # --- LÓGICA DE FECHAS COMPARTIDA (Evolución Y Análisis de Rotación) ---
+    if es_acumulado:
+        fecha_inicio_historia = pd.to_datetime('2025-01-01')
+    else:
+        # Retrocede 12 meses exactos desde el mes seleccionado para ver la ventana anual móvil
+        fecha_inicio_historia = pd.to_datetime(f"{anio_analisis - 1}-{mes_calc:02d}-01")
+        
+    rango_fechas_historia = pd.date_range(start=fecha_inicio_historia, end=fecha_corte, freq='ME')
+    historia_datos = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas_historia]
+    
+    df_historia = pd.DataFrame(historia_datos) if historia_datos else pd.DataFrame()
+    if not df_historia.empty:
+        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria = None, None, None, None, None
     if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
@@ -316,21 +306,35 @@ try:
                 fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
                 fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_lid, "k_lid")
+        else: st.info("No se detectó columna 'LIDER' o 'JEFE'.")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Categoría</h4>", unsafe_allow_html=True)
-    df_chart_cat = cross_filter('cat')
-    if not df_chart_cat.empty and 'CATEGORIA' in df_chart_cat.columns:
-        df_cat = df_chart_cat.groupby('CATEGORIA').size().reset_index(name='CANTIDAD')
-        df_cat['CATEGORIA'] = df_cat['CATEGORIA'].replace('NAN', 'NO DECLARADA')
-        df_cat['ETIQUETA'] = df_cat['CANTIDAD'].astype(str) + " (" + (df_cat['CANTIDAD']/df_cat['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
-        df_cat = df_cat.sort_values('CANTIDAD', ascending=True)
-        altura_dinamica = max(350, len(df_cat) * 35)
-        
-        fig_cat = px.bar(df_cat, y='CATEGORIA', x='CANTIDAD', text='ETIQUETA', orientation='h', color_discrete_sequence=[paleta_neutra[3]])
-        fig_cat.update_traces(hovertemplate="<b>Categoría: %{y}</b><br>Colaboradores: %{text}<extra></extra>", textposition='outside')
-        fig_cat.update_layout(height=altura_dinamica, xaxis_title="Cantidad de Colaboradores", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-        draw_safe_interactive_chart(fig_cat, "k_cat")
+    # --- FILA 3: EVOLUCIÓN (Ancho) y CATEGORÍA (Estrecho) ---
+    col_x5, col_x6 = st.columns([2, 1])
+    
+    with col_x5:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución de la Dotación</h4>", unsafe_allow_html=True)
+        if not df_historia.empty:
+            fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
+            fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
+                                   line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
+            fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
+            fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
+            fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10, l=10, r=10), font=dict(color="#475569"), height=350) 
+            st.plotly_chart(fig_evol, use_container_width=True)
+            
+    with col_x6:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Categoría</h4>", unsafe_allow_html=True)
+        df_chart_cat = cross_filter('cat')
+        if not df_chart_cat.empty and 'CATEGORIA' in df_chart_cat.columns:
+            df_cat = df_chart_cat.groupby('CATEGORIA').size().reset_index(name='CANTIDAD')
+            df_cat['CATEGORIA'] = df_cat['CATEGORIA'].replace('NAN', 'NO DECLARADA')
+            df_cat['ETIQUETA'] = df_cat['CANTIDAD'].astype(str) + " (" + (df_cat['CANTIDAD']/df_cat['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
+            df_cat = df_cat.sort_values('CANTIDAD', ascending=True)
+            
+            fig_cat = px.bar(df_cat, y='CATEGORIA', x='CANTIDAD', text='ETIQUETA', orientation='h', color_discrete_sequence=[paleta_neutra[3]])
+            fig_cat.update_traces(hovertemplate="<b>Categoría: %{y}</b><br>Colaboradores: %{text}<extra></extra>", textposition='outside')
+            fig_cat.update_layout(height=350, xaxis_title="Cantidad", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10, l=10, r=10))
+            draw_safe_interactive_chart(fig_cat, "k_cat")
 
     df_tabla_final = cross_filter('none')
     filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else "", f"Categoría: {sel_click_categoria}" if sel_click_categoria else ""] if f]
@@ -431,7 +435,6 @@ try:
                 st.markdown(f"<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
                 st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en el gráfico de torta para auditar los resultados de las evaluaciones de potencial.</p>", unsafe_allow_html=True)
 
-                # --- KPI DE RIESGO DE RETENCIÓN ---
                 total_movs = len(df_mov_periodo)
                 df_mov_kpi = df_mov_periodo.merge(df_raw[[col_nombre, 'FECHA_EGR_DT']], left_on='NOMBRE', right_on=col_nombre, how='left')
                 df_mov_kpi['DIAS_POST_MOV'] = (df_mov_kpi['FECHA_EGR_DT'] - df_mov_kpi['FECHA_MOV_DT']).dt.days
@@ -443,7 +446,6 @@ try:
                     pct_fracaso = (bajas_temp_mov / total_movs) * 100
                     st.markdown(f"<div style='background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #b45309; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ <b>Riesgo de Retención post-Movimiento:</b> {bajas_temp_mov} de los {total_movs} colaboradores movidos/promovidos (<b>{pct_fracaso:.1f}%</b>) se dieron de baja antes de cumplir 12 meses en su nuevo rol.</p></div>", unsafe_allow_html=True)
                     
-                    # --- NUEVO: EXPANDER PARA VER QUIÉNES SON ---
                     with st.expander("Ver colaboradores que se dieron de baja tras movimiento/promoción", expanded=False):
                         df_bajas_riesgo['FECHA_EGR'] = df_bajas_riesgo['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
                         df_bajas_riesgo['FECHA_MOV_STR'] = df_bajas_riesgo['FECHA_MOV_DT'].dt.strftime('%d/%m/%Y')
