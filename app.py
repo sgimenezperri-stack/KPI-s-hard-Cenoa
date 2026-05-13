@@ -117,7 +117,7 @@ try:
     hoy = datetime.now()
 
     # =====================================================================
-    # 3. ENCABEZADO Y BOTÓN GRIS (SECONDARY)
+    # 3. ENCABEZADO Y BOTÓN GRIS
     # =====================================================================
     col_icon, col_text, col_btn = st.columns([0.5, 9.5, 2])
     with col_icon:
@@ -127,7 +127,6 @@ try:
         st.markdown("<div class='sub-title'>Grupo Cenoa | Panel de Control de Dotación y Rotación</div>", unsafe_allow_html=True)
     with col_btn:
         st.markdown("<br>", unsafe_allow_html=True)
-        # Cambio a botón secundario (Gris)
         if st.button("🔄 Actualizar Datos", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
@@ -216,6 +215,7 @@ try:
     # =====================================================================
     # 4. PESTAÑAS MAESTRAS
     # =====================================================================
+    st.markdown("<br>", unsafe_allow_html=True)
     tab_dotacion, tab_rotacion = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención"])
 
     # ---------------------------------------------------------------------
@@ -311,7 +311,7 @@ try:
     # TAB 2: ROTACIÓN
     # ---------------------------------------------------------------------
     with tab_rotacion:
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación (Egresos / Dotación Promedio)</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación (Fórmula: Egresos / Dotación Promedio)</h3>", unsafe_allow_html=True)
         
         fecha_inicio_rot = pd.to_datetime(f"{anio_analisis}-01-01") if es_acumulado else pd.to_datetime(f"{anio_analisis}-{mes_calc:02d}-01")
         dot_inicial_rot = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_rot))])
@@ -334,7 +334,6 @@ try:
             bajas_vol_temp_rot = pd.DataFrame(); tot_bajas_vol_temp_rot = 0
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
         
-        # STAFF vs OPERACIÓN
         df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         df_op = df_filt[~df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         
@@ -408,11 +407,20 @@ try:
                 draw_safe_interactive_chart(fig_area, "k_rot_area")
 
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>↳ Detalle Interactivo de Bajas</h4>", unsafe_allow_html=True)
-        sel_rt = st.session_state.get('k_rot_tipo', {}).get('selection', {}).get('points', [{}])[0].get('label')
-        sel_ra = st.session_state.get('k_rot_area', {}).get('selection', {}).get('points', [{}])[0].get('y')
+        
+        # VALIDACIÓN PARA EVITAR INDEX OUT OF RANGE
+        sel_rt, sel_ra = None, None
+        if 'k_rot_tipo' in st.session_state and st.session_state.k_rot_tipo.get('selection', {}).get('points'):
+            sel_rt = st.session_state.k_rot_tipo['selection']['points'][0].get('label')
+        if 'k_rot_area' in st.session_state and st.session_state.k_rot_area.get('selection', {}).get('points'):
+            sel_ra = st.session_state.k_rot_area['selection']['points'][0].get('y')
+
         df_show_bajas = bajas_periodo_rot.copy()
         if sel_rt: df_show_bajas = df_show_bajas[df_show_bajas['TIPO'] == sel_rt]
         if sel_ra: df_show_bajas = df_show_bajas[df_show_bajas['AREA'] == sel_ra]
+        
+        df_show_bajas['FECHA_EGR_STR'] = df_show_bajas['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
+        cols_rot_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA_EGR_STR', 'MOTIVO DE EGRESO'] if c in df_show_bajas.columns]
         st.dataframe(df_show_bajas[cols_rot_show].rename(columns={'FECHA_EGR_STR': 'FECHA EGRESO'}), use_container_width=True)
 
 except Exception as e:
