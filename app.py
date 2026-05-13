@@ -123,7 +123,6 @@ try:
     ultimo_dia = calendar.monthrange(anio_analisis, mes_analisis)[1]
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_analisis:02d}-{ultimo_dia}")
 
-    # Cálculos previos de Antigüedad y Líder (Para filtros globales)
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
     labels_ant = ['< 1 año', '1 a 3 años', '3 a 5 años', '5 a 10 años', '+ 10 años']
@@ -172,7 +171,6 @@ try:
     df_periodo = get_dotacion_a_fecha(df_universo, fecha_corte).copy()
     dot_actual = len(df_periodo)
 
-    # Identificación segura de la columna Nombres
     posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
     col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
     cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO']
@@ -233,7 +231,7 @@ try:
     st.divider()
 
     # =====================================================================
-    # 8. MÓDULO DE CROSS-FILTERING (INTERACTIVIDAD BI)
+    # 8. MÓDULO DE CROSS-FILTERING
     # =====================================================================
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
     st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz doble clic para deshacer la selección de una barra o porción.</p>", unsafe_allow_html=True)
@@ -388,13 +386,16 @@ try:
                     
             with tab_bajas:
                 if len(bajas_mes) > 0:
-                    # --- CÁLCULO DE ROTACIÓN TEMPRANA ---
+                    # --- CÁLCULO DE ROTACIÓN TEMPRANA CON PORCENTAJE ---
                     bajas_mes['ANTIGÜEDAD AL EGRESO'] = (bajas_mes['FECHA_EGR_DT'] - bajas_mes['FECHA_ING_DT']).dt.days / 365.25
                     bajas_mes['< 1 AÑO'] = np.where(bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1, '⚠️ Sí', 'No')
+                    
                     bajas_tempranas = len(bajas_mes[bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1])
+                    total_bajas_mes = len(bajas_mes)
                     
                     if bajas_tempranas > 0:
-                        st.markdown(f"<p style='color: #b91c1c; font-weight: 600; font-size: 14px;'>⚠️ Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad.</p>", unsafe_allow_html=True)
+                        pct_tempranas = (bajas_tempranas / total_bajas_mes) * 100
+                        st.markdown(f"<div style='background-color: #fef2f2; border-left: 4px solid #b91c1c; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #991b1b; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad. Esto representa el <b>{pct_tempranas:.1f}%</b> del total de egresos del mes.</p></div>", unsafe_allow_html=True)
                     
                     col_b1, col_b2 = st.columns(2)
                     
@@ -409,7 +410,6 @@ try:
                         st.plotly_chart(fig_b, use_container_width=True)
                         
                     with col_b2:
-                        # --- NUEVO: GRÁFICO DE MOTIVOS DE BAJA ---
                         st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Motivos de Baja</h4>", unsafe_allow_html=True)
                         res_mot = bajas_mes.groupby('MOTIVO DE EGRESO').size().reset_index(name='Cant')
                         res_mot['MOTIVO DE EGRESO'] = res_mot['MOTIVO DE EGRESO'].replace('NAN', 'NO DECLARADO')
