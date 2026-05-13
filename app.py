@@ -35,10 +35,7 @@ paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a
 # =====================================================================
 # 2. CONEXIÓN A BASES DE DATOS
 # =====================================================================
-# Link de la Hoja 1 (Estructura - Dotación)
 CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
-
-# Link de la Hoja 2 (Movimientos Internos)
 CSV_URL_MOVIMIENTOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=176641150&single=true&output=csv" 
 
 @st.cache_data(ttl=60)
@@ -64,10 +61,8 @@ def load_data():
 @st.cache_data(ttl=60)
 def load_data_mov():
     df = pd.read_csv(CSV_URL_MOVIMIENTOS, dtype=str)
-    # Limpieza extrema de columnas: mayúsculas, sin espacios extra, sin tildes
     df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
     
-    # BÚSQUEDA INTELIGENTE DE COLUMNAS
     mapeo = {}
     for col in df.columns:
         if 'FECHA' in col and ('MOV' in col or 'EFE' in col): mapeo[col] = 'FECHA_MOV'
@@ -382,27 +377,28 @@ try:
                         st.plotly_chart(fig_tipo, use_container_width=True)
                 
                 with col_m2:
-                    st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Validación de Promociones vs. Potencial</h4>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Cruce: Tipo de Movimiento vs. Potencial</h4>", unsafe_allow_html=True)
                     if 'TIPO_MOV' in df_mov_periodo.columns and 'POTENCIAL' in df_mov_periodo.columns:
-                        df_promo = df_mov_periodo[df_mov_periodo['TIPO_MOV'].str.contains('PROMOC', na=False, case=False)]
-                        if not df_promo.empty:
-                            res_pot = df_promo.groupby('POTENCIAL').size().reset_index(name='CANTIDAD')
-                            res_pot['ETIQUETA'] = res_pot['CANTIDAD'].astype(str) + " (" + (res_pot['CANTIDAD']/res_pot['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
-                            
-                            fig_pot = px.bar(res_pot, x='POTENCIAL', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[0]])
-                            fig_pot.update_traces(hovertemplate="<b>Potencial: %{x}</b><br>Promocionados: %{text}<extra></extra>")
-                            fig_pot.update_layout(xaxis_title="Evaluación de Potencial Previa", yaxis_title="Cantidad de Promociones", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
-                            st.plotly_chart(fig_pot, use_container_width=True)
-                        else:
-                            st.info("No se registraron promociones en el periodo seleccionado.")
+                        # 💡 Mejora: Gráfico de barras agrupadas para comparar todos los tipos de movimientos
+                        res_pot = df_mov_periodo.groupby(['POTENCIAL', 'TIPO_MOV']).size().reset_index(name='CANTIDAD')
+                        res_pot['POTENCIAL'] = res_pot['POTENCIAL'].replace(['NAN', 'NO APLICA', ''], 'SIN EVALUAR')
+                        
+                        fig_pot = px.bar(res_pot, x='TIPO_MOV', y='CANTIDAD', color='POTENCIAL', text='CANTIDAD', barmode='group', color_discrete_sequence=paleta_neutra)
+                        fig_pot.update_traces(hovertemplate="<b>%{x}</b><br>Potencial: %{data.name}<br>Cantidad: %{text}<extra></extra>")
+                        fig_pot.update_layout(xaxis_title="Tipo de Movimiento", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10), legend_title="Eval. Potencial")
+                        st.plotly_chart(fig_pot, use_container_width=True)
             
                 with st.expander("Ver detalle histórico de movimientos y promociones"):
+                    # Solución al listado vacío: Ordenar primero y luego seleccionar columnas existentes
                     cols_mov = [c for c in ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV', 'EMP_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'POTENCIAL'] if c in df_mov_periodo.columns]
-                    st.dataframe(df_mov_periodo[cols_mov].sort_values(by='FECHA_MOV_DT', ascending=False), use_container_width=True)
+                    df_show_mov = df_mov_periodo.sort_values(by='FECHA_MOV_DT', ascending=False)[cols_mov]
+                    st.dataframe(df_show_mov, use_container_width=True)
+            else:
+                st.info("No hay registros de movimientos internos en el rango seleccionado.")
         else:
-            st.warning(f"⚠️ El tablero no pudo encontrar la columna de fecha en Movimientos. Columnas detectadas: {', '.join(df_mov.columns)}")
+            st.warning("No se detectó la columna de Fechas en la pestaña de Movimientos.")
     except Exception as e:
-        pass # Silenciamos el error si no hay link válido aún
+        st.error(f"Error al cargar módulo de movimientos. Detalle técnico: {e}")
 
 except Exception as e:
     st.error(f"Error técnico general: {e}")
