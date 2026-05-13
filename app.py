@@ -223,9 +223,34 @@ try:
     st.divider()
 
     # =====================================================================
+    # 4.5. EVOLUCIÓN HISTÓRICA (NUEVA UBICACIÓN)
+    # =====================================================================
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Evolución de la Dotación (YTD)</h3>", unsafe_allow_html=True)
+    
+    fecha_inicio_grafico = pd.to_datetime(f"{anio_analisis}-01-01")
+    rango_fechas = pd.date_range(start=fecha_inicio_grafico, end=fecha_corte, freq='ME')
+    historia = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas]
+    
+    df_historia = pd.DataFrame()
+    if historia:
+        df_historia = pd.DataFrame(historia)
+        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
+        
+        fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
+        fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
+                               line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
+        fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
+        fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
+        fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=300) 
+        st.plotly_chart(fig_evol, use_container_width=True)
+
+    st.divider()
+
+    # =====================================================================
     # 5. CROSS-FILTERING DASHBOARD
     # =====================================================================
-    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos de Estructura (Cross-Filtering)</h3>", unsafe_allow_html=True)
     
     def draw_safe_interactive_chart(fig, unique_key):
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
@@ -316,29 +341,11 @@ try:
     st.divider()
 
     # =====================================================================
-    # 6. ANÁLISIS MENSUAL DE ROTACIÓN E HISTÓRICO
+    # 6. ANÁLISIS MENSUAL DE ROTACIÓN
     # =====================================================================
-    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Evolución Histórica y Rotación Mensual</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
     
-    fecha_inicio_grafico = pd.to_datetime('2025-01-01')
-    rango_fechas = pd.date_range(start=fecha_inicio_grafico if fecha_corte >= fecha_inicio_grafico else fecha_corte.replace(month=1, day=1), end=fecha_corte, freq='ME')
-    historia = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas]
-    
-    if historia:
-        df_historia = pd.DataFrame(historia)
-        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
-        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
-        
-        # --- RESTAURACIÓN DEL GRÁFICO DE EVOLUCIÓN HISTÓRICA ---
-        fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-        fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
-                               line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
-        fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
-        fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
-        fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60), font=dict(color="#475569")) 
-        st.plotly_chart(fig_evol, use_container_width=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
+    if not df_historia.empty:
         opciones_meses = ["Acumulado del Año (Todos)"] + df_historia['Mes_Esp'].tolist()
         
         col_sel, _ = st.columns([1, 2])
@@ -424,14 +431,24 @@ try:
                 st.markdown(f"<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
                 st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en el gráfico de torta para auditar los resultados de las evaluaciones de potencial.</p>", unsafe_allow_html=True)
 
+                # --- KPI DE RIESGO DE RETENCIÓN ---
                 total_movs = len(df_mov_periodo)
                 df_mov_kpi = df_mov_periodo.merge(df_raw[[col_nombre, 'FECHA_EGR_DT']], left_on='NOMBRE', right_on=col_nombre, how='left')
                 df_mov_kpi['DIAS_POST_MOV'] = (df_mov_kpi['FECHA_EGR_DT'] - df_mov_kpi['FECHA_MOV_DT']).dt.days
-                bajas_temp_mov = len(df_mov_kpi[(df_mov_kpi['DIAS_POST_MOV'] >= 0) & (df_mov_kpi['DIAS_POST_MOV'] <= 365)])
+                
+                df_bajas_riesgo = df_mov_kpi[(df_mov_kpi['DIAS_POST_MOV'] >= 0) & (df_mov_kpi['DIAS_POST_MOV'] <= 365)].copy()
+                bajas_temp_mov = len(df_bajas_riesgo)
                 
                 if bajas_temp_mov > 0:
                     pct_fracaso = (bajas_temp_mov / total_movs) * 100
                     st.markdown(f"<div style='background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #b45309; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ <b>Riesgo de Retención post-Movimiento:</b> {bajas_temp_mov} de los {total_movs} colaboradores movidos/promovidos (<b>{pct_fracaso:.1f}%</b>) se dieron de baja antes de cumplir 12 meses en su nuevo rol.</p></div>", unsafe_allow_html=True)
+                    
+                    # --- NUEVO: EXPANDER PARA VER QUIÉNES SON ---
+                    with st.expander("Ver colaboradores que se dieron de baja tras movimiento/promoción", expanded=False):
+                        df_bajas_riesgo['FECHA_EGR'] = df_bajas_riesgo['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
+                        df_bajas_riesgo['FECHA_MOV_STR'] = df_bajas_riesgo['FECHA_MOV_DT'].dt.strftime('%d/%m/%Y')
+                        cols_show_riesgo = ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV_STR', 'PUESTO_ORIGEN', 'PUESTO_DESTINO', 'FECHA_EGR', 'DIAS_POST_MOV']
+                        st.dataframe(df_bajas_riesgo[cols_show_riesgo].rename(columns={'FECHA_MOV_STR': 'FECHA MOV.', 'FECHA_EGR': 'FECHA EGRESO', 'DIAS_POST_MOV': 'DÍAS DURACIÓN'}).sort_values('DÍAS DURACIÓN'), use_container_width=True)
                 else:
                     st.markdown(f"<div style='background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #15803d; font-weight: 600; font-size: 14px; margin: 0;'>✅ Excelente retención: Ningún talento promovido o reubicado en este periodo se ha dado de baja.</p></div>", unsafe_allow_html=True)
 
