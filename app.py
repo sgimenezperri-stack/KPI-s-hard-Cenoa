@@ -246,6 +246,7 @@ try:
         meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
 
+    # --- CAPTURA DE CLICS PARA TODOS LOS GRÁFICOS ---
     sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria = None, None, None, None, None
     if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
     if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict) and st.session_state.k_loc.get('selection', {}).get('points'): pt = st.session_state.k_loc['selection']['points'][0]; sel_click_localidad = pt.get('label', pt.get('x'))
@@ -262,6 +263,37 @@ try:
         if exclude_chart != 'cat' and sel_click_categoria and 'CATEGORIA' in df_x.columns: df_x = df_x[df_x['CATEGORIA'] == sel_click_categoria]
         return df_x
 
+    # --- FILA 1: EVOLUCIÓN (Ancho) y CATEGORÍA (Estrecho) ---
+    col_top1, col_top2 = st.columns([2, 1])
+    
+    with col_top1:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución de la Dotación</h4>", unsafe_allow_html=True)
+        if not df_historia.empty:
+            fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
+            fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
+                                   line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
+            fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
+            fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
+            fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10, l=10, r=10), font=dict(color="#475569"), height=350) 
+            st.plotly_chart(fig_evol, use_container_width=True)
+            
+    with col_top2:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Categoría</h4>", unsafe_allow_html=True)
+        df_chart_cat = cross_filter('cat')
+        if not df_chart_cat.empty and 'CATEGORIA' in df_chart_cat.columns:
+            df_cat = df_chart_cat.groupby('CATEGORIA').size().reset_index(name='CANTIDAD')
+            df_cat['CATEGORIA'] = df_cat['CATEGORIA'].replace('NAN', 'NO DECLARADA')
+            df_cat['ETIQUETA'] = df_cat['CANTIDAD'].astype(str) + " (" + (df_cat['CANTIDAD']/df_cat['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
+            df_cat = df_cat.sort_values('CANTIDAD', ascending=True)
+            
+            fig_cat = px.bar(df_cat, y='CATEGORIA', x='CANTIDAD', text='ETIQUETA', orientation='h', color_discrete_sequence=[paleta_neutra[3]])
+            fig_cat.update_traces(hovertemplate="<b>Categoría: %{y}</b><br>Colaboradores: %{text}<extra></extra>", textposition='outside')
+            fig_cat.update_layout(height=350, xaxis_title="Cantidad", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10, l=10, r=10))
+            draw_safe_interactive_chart(fig_cat, "k_cat")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- FILA 2 ---
     col_x1, col_x2 = st.columns(2)
     with col_x1:
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Empresa</h4>", unsafe_allow_html=True)
@@ -283,6 +315,7 @@ try:
             fig_loc.update_layout(font=dict(color="#475569"))
             draw_safe_interactive_chart(fig_loc, "k_loc")
 
+    # --- FILA 3 ---
     col_x3, col_x4 = st.columns(2)
     with col_x3:
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Distribución por Antigüedad</h4>", unsafe_allow_html=True)
@@ -306,36 +339,8 @@ try:
                 fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
                 fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_lid, "k_lid")
-        else: st.info("No se detectó columna 'LIDER' o 'JEFE'.")
 
-    # --- FILA 3: EVOLUCIÓN (Ancho) y CATEGORÍA (Estrecho) ---
-    col_x5, col_x6 = st.columns([2, 1])
-    
-    with col_x5:
-        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución de la Dotación</h4>", unsafe_allow_html=True)
-        if not df_historia.empty:
-            fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-            fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
-                                   line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
-            fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
-            fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
-            fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10, l=10, r=10), font=dict(color="#475569"), height=350) 
-            st.plotly_chart(fig_evol, use_container_width=True)
-            
-    with col_x6:
-        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Categoría</h4>", unsafe_allow_html=True)
-        df_chart_cat = cross_filter('cat')
-        if not df_chart_cat.empty and 'CATEGORIA' in df_chart_cat.columns:
-            df_cat = df_chart_cat.groupby('CATEGORIA').size().reset_index(name='CANTIDAD')
-            df_cat['CATEGORIA'] = df_cat['CATEGORIA'].replace('NAN', 'NO DECLARADA')
-            df_cat['ETIQUETA'] = df_cat['CANTIDAD'].astype(str) + " (" + (df_cat['CANTIDAD']/df_cat['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
-            df_cat = df_cat.sort_values('CANTIDAD', ascending=True)
-            
-            fig_cat = px.bar(df_cat, y='CATEGORIA', x='CANTIDAD', text='ETIQUETA', orientation='h', color_discrete_sequence=[paleta_neutra[3]])
-            fig_cat.update_traces(hovertemplate="<b>Categoría: %{y}</b><br>Colaboradores: %{text}<extra></extra>", textposition='outside')
-            fig_cat.update_layout(height=350, xaxis_title="Cantidad", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10, l=10, r=10))
-            draw_safe_interactive_chart(fig_cat, "k_cat")
-
+    # --- TABLA RESULTANTE DE LOS CLICS ---
     df_tabla_final = cross_filter('none')
     filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else "", f"Categoría: {sel_click_categoria}" if sel_click_categoria else ""] if f]
     if filtros_activos:
