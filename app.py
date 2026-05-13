@@ -64,11 +64,14 @@ st.markdown("""
 paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a', '#e2e8f0']
 
 # 3. LECTURA Y LIMPIEZA DE DATOS
-CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
+CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
+
+# ¡IMPORTANTE! REEMPLAZAR ESTE LINK POR EL CSV DE LA SOLAPA "Hechos_Movimientos"
+CSV_URL_MOVIMIENTOS = "AQUI_TU_LINK_CSV_HECHOS_MOVIMIENTOS" 
 
 @st.cache_data(ttl=60)
 def load_data():
-    df = pd.read_csv(CSV_URL, dtype=str)
+    df = pd.read_csv(CSV_URL_DOTACION, dtype=str)
     df.columns = [str(c).strip().upper() for c in df.columns]
     df = df.rename(columns={
         'ÁREA': 'AREA', 
@@ -84,9 +87,6 @@ def load_data():
     df['FECHA_ING_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
     df['FECHA_EGR_DT'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
     
-    if 'EDAD' in df.columns:
-        df['EDAD_NUM'] = df['EDAD'].str.extract(r'(\d+)').astype(float)
-    
     cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO']
     for c in cols_txt:
         if c in df.columns:
@@ -95,6 +95,30 @@ def load_data():
     if 'PUESTO' in df.columns:
         df = df[~df['PUESTO'].str.contains('PRACTICANTE', na=False)]
         
+    return df
+
+@st.cache_data(ttl=60)
+def load_data_mov():
+    df = pd.read_csv(CSV_URL_MOVIMIENTOS, dtype=str)
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    # Normalizamos nombres de columnas esperados
+    mapeo = {
+        'APELLIDO Y NOMBRE': 'NOMBRE', 'COLABORADOR': 'NOMBRE',
+        'EMPRESA ORIGEN': 'EMP_ORIGEN', 'LOCALIDAD ORIGEN': 'LOC_ORIGEN', 'PUESTO ORIGEN': 'PUESTO_ORIGEN',
+        'EMPRESA DESTINO': 'EMP_DESTINO', 'LOCALIDAD DESTINO': 'LOC_DESTINO', 'AREA DESTINO': 'AREA_DESTINO', 'PUESTO DESTINO': 'PUESTO_DESTINO',
+        'FECHA DE MOVIMIENTO': 'FECHA_MOV', 'FECHA MOVIMIENTO': 'FECHA_MOV',
+        'TIPO DE MOVIMIENTO': 'TIPO_MOV', 'TIPO MOVIMIENTO': 'TIPO_MOV',
+        'EVALUACION DE POTENCIAL': 'POTENCIAL', 'EVALUACIÓN DE POTENCIAL': 'POTENCIAL'
+    }
+    df = df.rename(columns=mapeo)
+    if 'FECHA_MOV' in df.columns:
+        df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
+        
+    cols_txt = ['EMP_ORIGEN', 'LOC_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'LOC_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'TIPO_MOV', 'POTENCIAL']
+    for c in cols_txt:
+        if c in df.columns:
+            df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], 'NO DECLARADO')
+            
     return df
 
 try:
@@ -213,14 +237,12 @@ try:
             cols_prueba_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO', 'VENCIMIENTO PRUEBA', 'DÍAS RESTANTES']
             if col_nombre: cols_prueba_base.insert(1, col_nombre)
             cols_prueba = [c for c in cols_prueba_base if c in df_prueba.columns]
-            
             df_prueba_show = df_prueba[cols_prueba].sort_values(by='DÍAS RESTANTES', ascending=True)
             
             def highlight_urgent(row):
                 if row['DÍAS RESTANTES'] < 30:
                     return ['background-color: #fee2e2; color: #991b1b; font-weight: bold'] * len(row)
                 return [''] * len(row)
-                
             st.dataframe(df_prueba_show.style.apply(highlight_urgent, axis=1), use_container_width=True)
 
     with st.expander(f"Nómina completa: {dot_actual} colaboradores activos", expanded=False):
@@ -234,15 +256,12 @@ try:
     # 8. MÓDULO DE CROSS-FILTERING
     # =====================================================================
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz doble clic para deshacer la selección de una barra o porción.</p>", unsafe_allow_html=True)
-
+    
     def draw_safe_interactive_chart(fig, unique_key):
         try:
             return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError:
             st.plotly_chart(fig, use_container_width=True)
-            if unique_key == "k_emp": 
-                st.warning("⚠️ Tu versión de Streamlit no soporta clics en gráficos. Pide a sistemas que ejecuten: `pip install --upgrade streamlit`")
             return None
 
     sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider = None, None, None, None
@@ -338,7 +357,7 @@ try:
     st.divider()
 
     # =====================================================================
-    # 9. ANÁLISIS MENSUAL DE INGRESOS Y EGRESOS
+    # 9. ANÁLISIS MENSUAL DE ROTACIÓN (BAJAS E INGRESOS)
     # =====================================================================
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
     
@@ -367,7 +386,6 @@ try:
 
         if len(altas_mes) > 0 or len(bajas_mes) > 0:
             tab_altas, tab_bajas = st.tabs(["Análisis de Ingresos", "Análisis de Bajas"])
-            
             with tab_altas:
                 if len(altas_mes) > 0:
                     altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
@@ -377,16 +395,12 @@ try:
                     fig_a.update_traces(hovertemplate="<b>%{x}</b><br>Altas: %{text}<extra></extra>")
                     fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                     st.plotly_chart(fig_a, use_container_width=True)
-                    
                     with st.expander("Ver detalle de colaboradores ingresantes"):
                         cols_a = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in altas_mes.columns]
                         st.dataframe(altas_mes[cols_a], use_container_width=True)
-                else:
-                    st.info("No se registraron ingresos en este periodo.")
-                    
+            
             with tab_bajas:
                 if len(bajas_mes) > 0:
-                    # --- CÁLCULO DE ROTACIÓN TEMPRANA CON PORCENTAJE ---
                     bajas_mes['ANTIGÜEDAD AL EGRESO'] = (bajas_mes['FECHA_EGR_DT'] - bajas_mes['FECHA_ING_DT']).dt.days / 365.25
                     bajas_mes['< 1 AÑO'] = np.where(bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1, '⚠️ Sí', 'No')
                     
@@ -395,10 +409,9 @@ try:
                     
                     if bajas_tempranas > 0:
                         pct_tempranas = (bajas_tempranas / total_bajas_mes) * 100
-                        st.markdown(f"<div style='background-color: #fef2f2; border-left: 4px solid #b91c1c; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #991b1b; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad. Esto representa el <b>{pct_tempranas:.1f}%</b> del total de egresos del mes.</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='background-color: #fef2f2; border-left: 4px solid #b91c1c; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #991b1b; font-weight: 600; font-size: 14px; margin: 0;'>Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad. Esto representa el <b>{pct_tempranas:.1f}%</b> del total de egresos del mes.</p></div>", unsafe_allow_html=True)
                     
                     col_b1, col_b2 = st.columns(2)
-                    
                     with col_b1:
                         st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Bajas por Sede y Área</h4>", unsafe_allow_html=True)
                         bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
@@ -421,8 +434,60 @@ try:
                     with st.expander("Ver detalle de colaboradores dados de baja"):
                         cols_b = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO', '< 1 AÑO'] if c in bajas_mes.columns]
                         st.dataframe(bajas_mes[cols_b].sort_values(by=['EMPRESA', 'AREA']), use_container_width=True)
+
+    st.divider()
+
+    # =====================================================================
+    # 10. NUEVO MÓDULO: MOVILIDAD INTERNA Y DESARROLLO DE TALENTO
+    # =====================================================================
+    if CSV_URL_MOVIMIENTOS != "AQUI_TU_LINK_CSV_HECHOS_MOVIMIENTOS":
+        try:
+            df_mov = load_data_mov()
+            st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento (Año en Curso)</h3>", unsafe_allow_html=True)
+            
+            # Filtramos movimientos hasta el mes de análisis seleccionado en el año seleccionado
+            if 'FECHA_MOV_DT' in df_mov.columns:
+                df_mov_periodo = df_mov[(df_mov['FECHA_MOV_DT'].dt.year == anio_analisis) & (df_mov['FECHA_MOV_DT'].dt.month <= mes_analisis)]
+                
+                if not df_mov_periodo.empty:
+                    col_m1, col_m2 = st.columns(2)
+                    
+                    with col_m1:
+                        st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Distribución de Movimientos</h4>", unsafe_allow_html=True)
+                        if 'TIPO_MOV' in df_mov_periodo.columns:
+                            res_tipo = df_mov_periodo.groupby('TIPO_MOV').size().reset_index(name='CANTIDAD')
+                            res_tipo['TIPO_MOV'] = res_tipo['TIPO_MOV'].replace('NAN', 'NO CLASIFICADO')
+                            fig_tipo = px.pie(res_tipo, names='TIPO_MOV', values='CANTIDAD', hole=0.4, color_discrete_sequence=paleta_neutra)
+                            fig_tipo.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Cantidad: %{value} (%{percent})<extra></extra>")
+                            fig_tipo.update_layout(font=dict(color="#475569"), margin=dict(t=10))
+                            st.plotly_chart(fig_tipo, use_container_width=True)
+                    
+                    with col_m2:
+                        st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Validación de Promociones vs. Potencial</h4>", unsafe_allow_html=True)
+                        if 'TIPO_MOV' in df_mov_periodo.columns and 'POTENCIAL' in df_mov_periodo.columns:
+                            # Filtramos solo las filas que contengan la palabra "PROMOCION" o similar
+                            df_promo = df_mov_periodo[df_mov_periodo['TIPO_MOV'].str.contains('PROMOC', na=False, case=False)]
+                            if not df_promo.empty:
+                                res_pot = df_promo.groupby('POTENCIAL').size().reset_index(name='CANTIDAD')
+                                tot_pot = res_pot['CANTIDAD'].sum()
+                                res_pot['ETIQUETA'] = res_pot['CANTIDAD'].astype(str) + " (" + (res_pot['CANTIDAD']/tot_pot*100).round(1).astype(str) + "%)"
+                                
+                                fig_pot = px.bar(res_pot, x='POTENCIAL', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[0]])
+                                fig_pot.update_traces(hovertemplate="<b>Potencial: %{x}</b><br>Promocionados: %{text}<extra></extra>")
+                                fig_pot.update_layout(xaxis_title="Evaluación de Potencial Previa", yaxis_title="Cantidad de Promociones", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
+                                st.plotly_chart(fig_pot, use_container_width=True)
+                            else:
+                                st.info("No se registraron promociones en el periodo seleccionado.")
+                
+                    with st.expander("Ver detalle histórico de movimientos y promociones"):
+                        cols_mov = [c for c in ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV', 'EMP_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'POTENCIAL'] if c in df_mov_periodo.columns]
+                        st.dataframe(df_mov_periodo[cols_mov].sort_values(by='FECHA_MOV_DT', ascending=False), use_container_width=True)
                 else:
-                    st.info("No se registraron bajas en este periodo.")
+                    st.info("No hay registros de movimientos internos en el rango seleccionado.")
+        except Exception as e:
+            st.error(f"Error al cargar módulo de movimientos: Verifique que el archivo de la segunda solapa tenga la estructura correcta. Detalle: {e}")
+    else:
+        st.info("💡 Para visualizar el nuevo módulo de Movilidad Interna y Desarrollo de Talento, recuerda reemplazar la variable 'CSV_URL_MOVIMIENTOS' en el código con el link a tu segunda solapa.")
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
