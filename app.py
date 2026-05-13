@@ -8,44 +8,45 @@ import calendar
 # =====================================================================
 # 1. CONFIGURACIÓN DE PÁGINA Y CSS
 # =====================================================================
-st.set_page_config(page_title="Dotación y Rotación | Talent Hub", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="HR Metrics | Grupo Cenoa", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     html, body, [class*="css"]  {
         font-family: 'Inter', sans-serif;
     }
     .stApp { background-color: #f8fafc; }
     h1, h2, h3 { color: #1e293b !important; }
-    .main-title { color: #0f172a; font-weight: 700; font-size: 28px; margin-bottom: -5px; }
-    .sub-title { color: #64748b; font-weight: 600; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 20px; }
+    .main-title { color: #0f172a; font-weight: 800; font-size: 30px; margin-bottom: -5px; letter-spacing: -0.5px; }
+    .sub-title { color: #2563eb; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 20px; }
     [data-testid="metric-container"] {
-        background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
-    [data-testid="metric-container"] label { color: #64748b !important; font-weight: 500; }
-    [data-testid="metric-container"] div { color: #1e293b !important; }
+    [data-testid="metric-container"] label { color: #64748b !important; font-weight: 600; font-size: 13px;}
+    [data-testid="metric-container"] div { color: #0f172a !important; font-weight: 700; }
     hr { border-color: #e2e8f0; }
     .stExpander { background-color: #ffffff; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; }
     
-    /* Diseño de las pestañas superiores */
+    /* MEJORA: Diseño destacado de las pestañas superiores */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
+        gap: 30px;
+        border-bottom: 2px solid #e2e8f0;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
+        height: 60px;
         white-space: pre-wrap;
         background-color: transparent;
         border-radius: 4px 4px 0px 0px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        font-size: 16px;
-        font-weight: 600;
-        color: #64748b;
+        padding-top: 15px;
+        padding-bottom: 15px;
+        font-size: 20px; /* Tamaño más grande */
+        font-weight: 700; /* Negrita fuerte */
+        color: #94a3b8;
     }
     .stTabs [aria-selected="true"] {
-        color: #2563eb !important;
-        border-bottom-color: #2563eb !important;
+        color: #1e293b !important;
+        border-bottom: 4px solid #2563eb !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -58,7 +59,7 @@ paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a
 CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 CSV_URL_MOVIMIENTOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=176641150&single=true&output=csv" 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600) # Cacheo de 10 min, forzado por el botón
 def load_data():
     df = pd.read_csv(CSV_URL_DOTACION, dtype=str)
     df.columns = [str(c).strip().upper() for c in df.columns]
@@ -78,7 +79,7 @@ def load_data():
     if 'PUESTO' in df.columns: df = df[~df['PUESTO'].str.contains('PRACTICANTE', na=False)]
     return df
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def load_data_mov():
     df = pd.read_csv(CSV_URL_MOVIMIENTOS, dtype=str)
     df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
@@ -115,14 +116,19 @@ try:
     hoy = datetime.now()
 
     # =====================================================================
-    # 3. ENCABEZADO Y FILTROS GLOBALES
+    # 3. ENCABEZADO, REBRANDING Y BOTÓN DE ACTUALIZACIÓN
     # =====================================================================
-    col_icon, col_text = st.columns([0.5, 11.5])
+    col_icon, col_text, col_btn = st.columns([0.5, 9.5, 2])
     with col_icon:
-        st.markdown("<div style='background-color: #0f172a; width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; letter-spacing: 1px;'>TH</div>", unsafe_allow_html=True)
+        st.markdown("<div style='background-color: #0f172a; width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; letter-spacing: 1px; margin-top: 5px;'>GC</div>", unsafe_allow_html=True)
     with col_text:
-        st.markdown("<div class='main-title'>Workforce Analytics</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub-title'>Estructura Organizacional y Retención</div>", unsafe_allow_html=True)
+        st.markdown("<div class='main-title'>People Analytics & HR Hard Metrics</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sub-title'>Grupo Cenoa | Panel de Control de Dotación y Rotación</div>", unsafe_allow_html=True)
+    with col_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Actualizar Datos", type="primary", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     f1, f2, f3, f4, f5 = st.columns(5)
@@ -194,7 +200,7 @@ try:
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
-    # Pre-cálculos compartidos de Historia (Para Dotación y Rotación)
+    # Pre-cálculos compartidos de Historia
     if es_acumulado:
         fecha_inicio_historia = pd.to_datetime('2025-01-01')
     else:
@@ -364,7 +370,6 @@ try:
 
         st.divider()
 
-        # Análisis Mensual de Ingresos y Egresos (Módulo Original de Altas/Bajas)
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ingresos y Egresos</h3>", unsafe_allow_html=True)
         
         if not df_historia.empty:
@@ -533,19 +538,16 @@ try:
     with tab_rotacion:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación (Fórmula: Egresos / Dotación Promedio)</h3>", unsafe_allow_html=True)
         
-        # 1. Definición estricta del periodo
         if es_acumulado:
             fecha_inicio_rot = pd.to_datetime(f"{anio_analisis}-01-01")
         else:
             fecha_inicio_rot = pd.to_datetime(f"{anio_analisis}-{mes_calc:02d}-01")
             
-        # 2. Cálculo de Dotación Promedio Global
         dot_inicial_rot = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_rot))])
         dot_final_rot = dot_actual 
         dot_promedio_rot = (dot_inicial_rot + dot_final_rot) / 2
         dot_promedio_calc = dot_promedio_rot if dot_promedio_rot > 0 else 1
         
-        # 3. Cálculo de Bajas Globales
         bajas_periodo_rot = df_filt[(df_filt['FECHA_EGR_DT'] >= fecha_inicio_rot) & (df_filt['FECHA_EGR_DT'] <= fecha_corte)].copy()
         tot_bajas_rot = len(bajas_periodo_rot)
         rot_total_pct = (tot_bajas_rot / dot_promedio_calc) * 100
@@ -554,7 +556,6 @@ try:
         tot_bajas_vol_rot = len(bajas_voluntarias_rot)
         rot_vol_pct = (tot_bajas_vol_rot / dot_promedio_calc) * 100
         
-        # 4. Cálculo de Rotación Temprana
         if not bajas_voluntarias_rot.empty:
             bajas_voluntarias_rot['ANTIGUEDAD_DIAS_EGR'] = (bajas_voluntarias_rot['FECHA_EGR_DT'] - bajas_voluntarias_rot['FECHA_ING_DT']).dt.days
             bajas_vol_temp_rot = bajas_voluntarias_rot[bajas_voluntarias_rot['ANTIGUEDAD_DIAS_EGR'] <= 365].copy()
@@ -565,8 +566,6 @@ try:
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
         
-        # 5. Segmentación: STAFF (La Luz) vs OPERACIÓN (El resto)
-        # --- STAFF ---
         df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_rot))])
         dot_fin_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_corte) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] > fecha_corte))])
@@ -575,7 +574,6 @@ try:
         bajas_staff = len(bajas_periodo_rot[bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
         rot_staff_pct = (bajas_staff / prom_staff_calc) * 100
         
-        # --- OPERACIÓN ---
         df_op = df_filt[~df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         dot_ini_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] >= fecha_inicio_rot))])
         dot_fin_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_corte) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] > fecha_corte))])
@@ -584,7 +582,6 @@ try:
         bajas_op = len(bajas_periodo_rot[~bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
         rot_op_pct = (bajas_op / prom_op_calc) * 100
         
-        # --- RENDER KPIs ---
         cr1, cr2, cr3 = st.columns(3)
         cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos")
         cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias", delta_color="inverse")
@@ -598,7 +595,7 @@ try:
         
         st.divider()
         
-        # --- EVOLUCIÓN HISTÓRICA DE ROTACIÓN (3 PESTAÑAS) ---
+        # --- EVOLUCIÓN HISTÓRICA DE ROTACIÓN (CON ETIQUETAS DE TEXTO) ---
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Rotación</h4>", unsafe_allow_html=True)
         if not df_historia.empty:
             tasas_rotacion_hist = []
@@ -635,25 +632,26 @@ try:
             
             tab_rot_tot, tab_rot_vol, tab_rot_temp = st.tabs(["Rotación Total", "Rotación Voluntaria", "Rotación Temprana (< 1 año)"])
             
+            # Agregado el parámetro text y el formato de visualización a las 3 gráficas
             with tab_rot_tot:
-                fig_rt = px.line(df_hist_rot, x='Fecha', y='TASA_TOTAL', markers=True)
-                fig_rt.update_traces(marker=dict(size=7, color="#b91c1c"), line=dict(color="#ef4444", width=2), hovertemplate="<b>%{y:.1f}% Rotación Total</b><extra></extra>")
+                fig_rt = px.line(df_hist_rot, x='Fecha', y='TASA_TOTAL', markers=True, text='TASA_TOTAL')
+                fig_rt.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', marker=dict(size=7, color="#b91c1c"), line=dict(color="#ef4444", width=2), hovertemplate="<b>%{y:.1f}% Rotación Total</b><extra></extra>")
                 fig_rt.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
                 fig_rt.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
                 fig_rt.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
                 st.plotly_chart(fig_rt, use_container_width=True)
                 
             with tab_rot_vol:
-                fig_rv = px.line(df_hist_rot, x='Fecha', y='TASA_VOL', markers=True)
-                fig_rv.update_traces(marker=dict(size=7, color="#c2410c"), line=dict(color="#f97316", width=2), hovertemplate="<b>%{y:.1f}% Rotación Voluntaria</b><extra></extra>")
+                fig_rv = px.line(df_hist_rot, x='Fecha', y='TASA_VOL', markers=True, text='TASA_VOL')
+                fig_rv.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', marker=dict(size=7, color="#c2410c"), line=dict(color="#f97316", width=2), hovertemplate="<b>%{y:.1f}% Rotación Voluntaria</b><extra></extra>")
                 fig_rv.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
                 fig_rv.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
                 fig_rv.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
                 st.plotly_chart(fig_rv, use_container_width=True)
                 
             with tab_rot_temp:
-                fig_rtemp = px.line(df_hist_rot, x='Fecha', y='TASA_TEMP', markers=True)
-                fig_rtemp.update_traces(marker=dict(size=7, color="#a16207"), line=dict(color="#eab308", width=2), hovertemplate="<b>%{y:.1f}% Rotación Temprana</b><extra></extra>")
+                fig_rtemp = px.line(df_hist_rot, x='Fecha', y='TASA_TEMP', markers=True, text='TASA_TEMP')
+                fig_rtemp.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', marker=dict(size=7, color="#a16207"), line=dict(color="#eab308", width=2), hovertemplate="<b>%{y:.1f}% Rotación Temprana</b><extra></extra>")
                 fig_rtemp.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
                 fig_rtemp.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
                 fig_rtemp.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
@@ -661,7 +659,6 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- DESGLOSE DE LA ROTACIÓN (INTERACTIVO) ---
         sel_rot_tipo = None
         if 'k_rot_tipo' in st.session_state and isinstance(st.session_state.k_rot_tipo, dict) and st.session_state.k_rot_tipo.get('selection', {}).get('points'):
             sel_rot_tipo = st.session_state.k_rot_tipo['selection']['points'][0].get('label')
@@ -695,7 +692,6 @@ try:
             else:
                 st.info("No se registraron renuncias voluntarias en el periodo.")
 
-        # --- NUEVA NÓMINA INTERACTIVA DE BAJAS ---
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>↳ Detalle Interactivo de Bajas</h4>", unsafe_allow_html=True)
 
