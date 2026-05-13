@@ -223,7 +223,7 @@ try:
     st.divider()
 
     # =====================================================================
-    # 5. CROSS-FILTERING DASHBOARD
+    # 5. CROSS-FILTERING DASHBOARD (AHORA CON CATEGORÍA)
     # =====================================================================
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
     
@@ -292,7 +292,6 @@ try:
                 fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_lid, "k_lid")
 
-    # --- NUEVO: GRÁFICO DE CATEGORÍAS (ANCHO COMPLETO Y HORIZONTAL) ---
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Categoría</h4>", unsafe_allow_html=True)
     df_chart_cat = cross_filter('cat')
@@ -300,9 +299,7 @@ try:
         df_cat = df_chart_cat.groupby('CATEGORIA').size().reset_index(name='CANTIDAD')
         df_cat['CATEGORIA'] = df_cat['CATEGORIA'].replace('NAN', 'NO DECLARADA')
         df_cat['ETIQUETA'] = df_cat['CANTIDAD'].astype(str) + " (" + (df_cat['CANTIDAD']/df_cat['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
-        df_cat = df_cat.sort_values('CANTIDAD', ascending=True) # Ascendente para que el mayor quede arriba
-        
-        # Altura dinámica para que no se aplasten las barras (35px por categoría)
+        df_cat = df_cat.sort_values('CANTIDAD', ascending=True)
         altura_dinamica = max(350, len(df_cat) * 35)
         
         fig_cat = px.bar(df_cat, y='CATEGORIA', x='CANTIDAD', text='ETIQUETA', orientation='h', color_discrete_sequence=[paleta_neutra[3]])
@@ -332,16 +329,25 @@ try:
         meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
         
+        opciones_meses = ["Acumulado del Año (Todos)"] + df_historia['Mes_Esp'].tolist()
+        
         col_sel, _ = st.columns([1, 2])
-        with col_sel: mes_drill = st.selectbox("Seleccione un mes para auditar la rotación:", df_historia['Mes_Esp'].tolist(), index=len(df_historia)-1)
+        with col_sel: 
+            mes_drill = st.selectbox("Seleccione un mes para auditar la rotación:", opciones_meses, index=0)
             
-        fecha_elegida = df_historia.loc[df_historia['Mes_Esp'] == mes_drill, 'Fecha'].iloc[0]
-        altas_mes = df_filt[(df_filt['FECHA_ING_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_ING_DT'].dt.month == fecha_elegida.month)].copy()
-        bajas_mes = df_filt[(df_filt['FECHA_EGR_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_EGR_DT'].dt.month == fecha_elegida.month)].copy()
+        if mes_drill == "Acumulado del Año (Todos)":
+            altas_mes = df_filt[(df_filt['FECHA_ING_DT'].dt.year == anio_analisis) & (df_filt['FECHA_ING_DT'].dt.month <= mes_calc)].copy()
+            bajas_mes = df_filt[(df_filt['FECHA_EGR_DT'].dt.year == anio_analisis) & (df_filt['FECHA_EGR_DT'].dt.month <= mes_calc)].copy()
+            label_periodo = f"Acumulado {anio_analisis}"
+        else:
+            fecha_elegida = df_historia.loc[df_historia['Mes_Esp'] == mes_drill, 'Fecha'].iloc[0]
+            altas_mes = df_filt[(df_filt['FECHA_ING_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_ING_DT'].dt.month == fecha_elegida.month)].copy()
+            bajas_mes = df_filt[(df_filt['FECHA_EGR_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_EGR_DT'].dt.month == fecha_elegida.month)].copy()
+            label_periodo = mes_drill
         
         cm1, cm2, cm3 = st.columns(3)
-        cm1.metric(f"Altas en {mes_drill}", len(altas_mes))
-        cm2.metric(f"Bajas en {mes_drill}", len(bajas_mes))
+        cm1.metric(f"Altas en {label_periodo}", len(altas_mes))
+        cm2.metric(f"Bajas en {label_periodo}", len(bajas_mes))
         cm3.metric("Crecimiento Neto", len(altas_mes) - len(bajas_mes), delta=len(altas_mes) - len(bajas_mes))
 
         if len(altas_mes) > 0 or len(bajas_mes) > 0:
@@ -366,7 +372,7 @@ try:
                     bajas_tempranas = len(bajas_mes[bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1])
                     
                     if bajas_tempranas > 0:
-                        st.markdown(f"<div style='background-color: #fef2f2; border-left: 4px solid #b91c1c; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #991b1b; font-weight: 600; font-size: 14px; margin: 0;'>Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad. Esto representa el <b>{(bajas_tempranas / len(bajas_mes) * 100):.1f}%</b> del total de egresos.</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='background-color: #fef2f2; border-left: 4px solid #b91c1c; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #991b1b; font-weight: 600; font-size: 14px; margin: 0;'>Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad. Esto representa el <b>{(bajas_tempranas / len(bajas_mes) * 100):.1f}%</b> del total de egresos en el periodo.</p></div>", unsafe_allow_html=True)
                     
                     col_b1, col_b2 = st.columns(2)
                     with col_b1:
