@@ -238,7 +238,6 @@ try:
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
     st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz doble clic para deshacer la selección de una barra o porción.</p>", unsafe_allow_html=True)
 
-    # A. Función auxiliar para manejar el renderizado seguro de gráficos clickeables
     def draw_safe_interactive_chart(fig, unique_key):
         try:
             return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
@@ -248,7 +247,6 @@ try:
                 st.warning("⚠️ Tu versión de Streamlit no soporta clics en gráficos. Pide a sistemas que ejecuten: `pip install --upgrade streamlit`")
             return None
 
-    # B. Capturamos los clics de la memoria (Session State) ANTES de dibujar
     sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider = None, None, None, None
 
     if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict):
@@ -267,7 +265,6 @@ try:
         pts = st.session_state.k_lid.get('selection', {}).get('points', [])
         if pts: sel_click_lider = pts[0].get('y')
 
-    # C. Motor de Filtrado Cruzado
     def cross_filter(exclude_chart):
         df_x = df_periodo.copy()
         if exclude_chart != 'emp' and sel_click_empresa: df_x = df_x[df_x['EMPRESA'] == sel_click_empresa]
@@ -276,7 +273,6 @@ try:
         if exclude_chart != 'lid' and sel_click_lider and col_lider: df_x = df_x[df_x[col_lider] == sel_click_lider]
         return df_x
 
-    # D. Dibujado de Gráficos (Que se filtran entre sí)
     col_x1, col_x2 = st.columns(2)
     with col_x1:
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Empresa</h4>", unsafe_allow_html=True)
@@ -313,7 +309,6 @@ try:
             fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
             draw_safe_interactive_chart(fig_ant, "k_ant")
 
-    # CORRECCIÓN APLICADA AQUÍ: Reemplazo 'col4' por 'col_x4'
     with col_x4:
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top 10 Colaboradores por Líder</h4>", unsafe_allow_html=True)
         if col_lider:
@@ -328,9 +323,7 @@ try:
         else:
             st.info("No se detectó columna 'LIDER' o 'JEFE'.")
 
-    # E. Sábana de Datos Interactiva (Resultante de los clics)
-    df_tabla_final = cross_filter('none') # Aplica TODOS los clics a la vez
-    
+    df_tabla_final = cross_filter('none')
     filtros_activos = []
     if sel_click_empresa: filtros_activos.append(f"Empresa: {sel_click_empresa}")
     if sel_click_localidad: filtros_activos.append(f"Localidad: {sel_click_localidad}")
@@ -346,7 +339,9 @@ try:
 
     st.divider()
 
-    # (El módulo de Evolución y Análisis de Variación Mensual sigue intacto abajo)
+    # =====================================================================
+    # 9. ANÁLISIS MENSUAL DE INGRESOS Y EGRESOS
+    # =====================================================================
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
     
     fecha_inicio_grafico = pd.to_datetime('2025-01-01')
@@ -374,6 +369,7 @@ try:
 
         if len(altas_mes) > 0 or len(bajas_mes) > 0:
             tab_altas, tab_bajas = st.tabs(["Análisis de Ingresos", "Análisis de Bajas"])
+            
             with tab_altas:
                 if len(altas_mes) > 0:
                     altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
@@ -383,21 +379,50 @@ try:
                     fig_a.update_traces(hovertemplate="<b>%{x}</b><br>Altas: %{text}<extra></extra>")
                     fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                     st.plotly_chart(fig_a, use_container_width=True)
+                    
                     with st.expander("Ver detalle de colaboradores ingresantes"):
                         cols_a = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in altas_mes.columns]
                         st.dataframe(altas_mes[cols_a], use_container_width=True)
+                else:
+                    st.info("No se registraron ingresos en este periodo.")
+                    
             with tab_bajas:
                 if len(bajas_mes) > 0:
-                    bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
-                    res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
-                    res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/res_b['Cant'].sum()*100).round(1).astype(str) + "%)"
-                    fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
-                    fig_b.update_traces(hovertemplate="<b>%{x}</b><br>Bajas: %{text}<extra></extra>")
-                    fig_b.update_layout(xaxis_title="", yaxis_title="Bajas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-                    st.plotly_chart(fig_b, use_container_width=True)
+                    # --- CÁLCULO DE ROTACIÓN TEMPRANA ---
+                    bajas_mes['ANTIGÜEDAD AL EGRESO'] = (bajas_mes['FECHA_EGR_DT'] - bajas_mes['FECHA_ING_DT']).dt.days / 365.25
+                    bajas_mes['< 1 AÑO'] = np.where(bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1, '⚠️ Sí', 'No')
+                    bajas_tempranas = len(bajas_mes[bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1])
+                    
+                    if bajas_tempranas > 0:
+                        st.markdown(f"<p style='color: #b91c1c; font-weight: 600; font-size: 14px;'>⚠️ Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad.</p>", unsafe_allow_html=True)
+                    
+                    col_b1, col_b2 = st.columns(2)
+                    
+                    with col_b1:
+                        st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Bajas por Sede y Área</h4>", unsafe_allow_html=True)
+                        bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
+                        res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                        res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/res_b['Cant'].sum()*100).round(1).astype(str) + "%)"
+                        fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
+                        fig_b.update_traces(hovertemplate="<b>%{x}</b><br>Bajas: %{text}<extra></extra>")
+                        fig_b.update_layout(xaxis_title="", yaxis_title="Bajas", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
+                        st.plotly_chart(fig_b, use_container_width=True)
+                        
+                    with col_b2:
+                        # --- NUEVO: GRÁFICO DE MOTIVOS DE BAJA ---
+                        st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Motivos de Baja</h4>", unsafe_allow_html=True)
+                        res_mot = bajas_mes.groupby('MOTIVO DE EGRESO').size().reset_index(name='Cant')
+                        res_mot['MOTIVO DE EGRESO'] = res_mot['MOTIVO DE EGRESO'].replace('NAN', 'NO DECLARADO')
+                        fig_mot = px.pie(res_mot, names='MOTIVO DE EGRESO', values='Cant', hole=0.4, color_discrete_sequence=paleta_neutra)
+                        fig_mot.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Cantidad: %{value} (%{percent})<extra></extra>")
+                        fig_mot.update_layout(font=dict(color="#475569"), margin=dict(t=10))
+                        st.plotly_chart(fig_mot, use_container_width=True)
+
                     with st.expander("Ver detalle de colaboradores dados de baja"):
-                        cols_b = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c in bajas_mes.columns]
-                        st.dataframe(bajas_mes[cols_b], use_container_width=True)
+                        cols_b = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO', '< 1 AÑO'] if c in bajas_mes.columns]
+                        st.dataframe(bajas_mes[cols_b].sort_values(by=['EMPRESA', 'AREA']), use_container_width=True)
+                else:
+                    st.info("No se registraron bajas en este periodo.")
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
