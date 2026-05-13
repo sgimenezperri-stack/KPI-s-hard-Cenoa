@@ -8,7 +8,7 @@ import calendar
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Dotación | Talent Hub", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. INYECCIÓN DE CSS (DISEÑO CORPORATIVO Y NEUTRO)
+# 2. INYECCIÓN DE CSS (DISEÑO CORPORATIVO)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -60,7 +60,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# PALETA DE COLORES NEUTRA
+# PALETA DE COLORES NEUTRA Y PROFESIONAL
 paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a', '#e2e8f0']
 
 # 3. LECTURA Y LIMPIEZA DE DATOS
@@ -123,7 +123,7 @@ try:
     ultimo_dia = calendar.monthrange(anio_analisis, mes_analisis)[1]
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_analisis:02d}-{ultimo_dia}")
 
-    # Cálculos previos de Antigüedad y Líder para que impacten en filtros
+    # Cálculos previos de Antigüedad y Líder (Para filtros globales)
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
     labels_ant = ['< 1 año', '1 a 3 años', '3 a 5 años', '5 a 10 años', '+ 10 años']
@@ -172,7 +172,7 @@ try:
     df_periodo = get_dotacion_a_fecha(df_universo, fecha_corte).copy()
     dot_actual = len(df_periodo)
 
-    # Definimos columnas de nómina globalmente para usarlas al hacer clic en los gráficos
+    # Identificación segura de la columna Nombres
     posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
     col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
     cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'FECHA DE INGRESO']
@@ -206,7 +206,6 @@ try:
     c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
     c4.metric("En Período de Prueba", f"{en_prueba}", delta=f"{pct_prueba:.1f}% de la estructura", delta_color="off")
 
-    # 7. NÓMINAS DESPLEGABLES CON FORMATO CONDICIONAL
     if en_prueba > 0:
         with st.expander(f"Detalle: {en_prueba} colaboradores en Período de Prueba", expanded=False):
             df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['FECHA_ING_DT'] + pd.DateOffset(months=6)
@@ -233,182 +232,171 @@ try:
 
     st.divider()
 
-    # 8. GRÁFICOS DINÁMICOS
-    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Evolución de Crecimiento Neto</h3>", unsafe_allow_html=True)
+    # =====================================================================
+    # 8. MÓDULO DE CROSS-FILTERING (INTERACTIVIDAD BI)
+    # =====================================================================
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz doble clic para deshacer la selección de una barra o porción.</p>", unsafe_allow_html=True)
+
+    # A. Función auxiliar para manejar el renderizado seguro de gráficos clickeables
+    def draw_safe_interactive_chart(fig, unique_key):
+        try:
+            return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
+        except TypeError:
+            st.plotly_chart(fig, use_container_width=True)
+            if unique_key == "k_emp": 
+                st.warning("⚠️ Tu versión de Streamlit no soporta clics en gráficos. Pide a sistemas que ejecuten: `pip install --upgrade streamlit`")
+            return None
+
+    # B. Capturamos los clics de la memoria (Session State) ANTES de dibujar
+    sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider = None, None, None, None
+
+    if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict):
+        pts = st.session_state.k_emp.get('selection', {}).get('points', [])
+        if pts: sel_click_empresa = pts[0].get('x')
+
+    if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict):
+        pts = st.session_state.k_loc.get('selection', {}).get('points', [])
+        if pts: sel_click_localidad = pts[0].get('label', pts[0].get('x'))
+
+    if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict):
+        pts = st.session_state.k_ant.get('selection', {}).get('points', [])
+        if pts: sel_click_antiguedad = pts[0].get('x')
+
+    if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict):
+        pts = st.session_state.k_lid.get('selection', {}).get('points', [])
+        if pts: sel_click_lider = pts[0].get('y') # La barra horizontal guarda la categoría en 'y'
+
+    # C. Motor de Filtrado Cruzado
+    def cross_filter(exclude_chart):
+        df_x = df_periodo.copy()
+        if exclude_chart != 'emp' and sel_click_empresa: df_x = df_x[df_x['EMPRESA'] == sel_click_empresa]
+        if exclude_chart != 'loc' and sel_click_localidad: df_x = df_x[df_x['LOCALIDAD'] == sel_click_localidad]
+        if exclude_chart != 'ant' and sel_click_antiguedad: df_x = df_x[df_x['RANGO_ANTIGUEDAD'] == sel_click_antiguedad]
+        if exclude_chart != 'lid' and sel_click_lider and col_lider: df_x = df_x[df_x[col_lider] == sel_click_lider]
+        return df_x
+
+    # D. Dibujado de Gráficos (Que se filtran entre sí)
+    col_x1, col_x2 = st.columns(2)
+    with col_x1:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Empresa</h4>", unsafe_allow_html=True)
+        df_chart_emp = cross_filter('emp')
+        if not df_chart_emp.empty:
+            df_emp = df_chart_emp.groupby('EMPRESA').size().reset_index(name='Cant')
+            tot = df_emp['Cant'].sum()
+            df_emp['Etiqueta'] = df_emp['Cant'].astype(str) + " (" + (df_emp['Cant']/tot*100).round(1).astype(str) + "%)"
+            fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color_discrete_sequence=[paleta_neutra[0]])
+            fig_emp.update_traces(hovertemplate="<b>%{x}</b><br>Dotación: %{text}<extra></extra>")
+            fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación", plot_bgcolor='#ffffff', font=dict(color="#475569"))
+            draw_safe_interactive_chart(fig_emp, "k_emp")
+
+    with col_x2:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Corte por Localidad</h4>", unsafe_allow_html=True)
+        df_chart_loc = cross_filter('loc')
+        if not df_chart_loc.empty:
+            fig_loc = px.pie(df_chart_loc, names='LOCALIDAD', hole=0.4, color_discrete_sequence=paleta_neutra)
+            fig_loc.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Dotación: %{value} (%{percent})<extra></extra>")
+            fig_loc.update_layout(font=dict(color="#475569"))
+            draw_safe_interactive_chart(fig_loc, "k_loc")
+
+    col_x3, col_x4 = st.columns(2)
+    with col_x3:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Distribución por Antigüedad</h4>", unsafe_allow_html=True)
+        df_chart_ant = cross_filter('ant')
+        if not df_chart_ant.empty:
+            res_ant = df_chart_ant['RANGO_ANTIGUEDAD'].value_counts().reindex(labels_ant).reset_index()
+            res_ant.columns = ['RANGO', 'CANTIDAD']
+            tot = res_ant['CANTIDAD'].sum()
+            res_ant['ETIQUETA'] = res_ant['CANTIDAD'].astype(str) + " (" + (res_ant['CANTIDAD']/tot*100).round(1).astype(str) + "%)"
+            fig_ant = px.bar(res_ant, x='RANGO', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[1]])
+            fig_ant.update_traces(hovertemplate="<b>Rango: %{x}</b><br>Colaboradores: %{text}<extra></extra>")
+            fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
+            draw_safe_interactive_chart(fig_ant, "k_ant")
+
+    with col4:
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top 10 Colaboradores por Líder</h4>", unsafe_allow_html=True)
+        if col_lider:
+            df_chart_lid = cross_filter('lid')
+            if not df_chart_lid.empty:
+                df_lider = df_chart_lid.groupby(col_lider).size().reset_index(name='CANTIDAD')
+                df_lider = df_lider[df_lider[col_lider] != 'NAN'].sort_values('CANTIDAD', ascending=False).head(10)
+                fig_lid = px.bar(df_lider, y=col_lider, x='CANTIDAD', text='CANTIDAD', orientation='h', color_discrete_sequence=[paleta_neutra[2]])
+                fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
+                fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
+                draw_safe_interactive_chart(fig_lid, "k_lid")
+        else:
+            st.info("No se detectó columna 'LIDER' o 'JEFE'.")
+
+    # E. Sábana de Datos Interactiva (Resultante de los clics)
+    df_tabla_final = cross_filter('none') # Aplica TODOS los clics a la vez
+    
+    filtros_activos = []
+    if sel_click_empresa: filtros_activos.append(f"Empresa: {sel_click_empresa}")
+    if sel_click_localidad: filtros_activos.append(f"Localidad: {sel_click_localidad}")
+    if sel_click_antiguedad: filtros_activos.append(f"Antigüedad: {sel_click_antiguedad}")
+    if sel_click_lider: filtros_activos.append(f"Líder: {sel_click_lider}")
+    
+    if filtros_activos:
+        txt_filtros = " | ".join(filtros_activos)
+        st.markdown(f"<div style='background:#f1f5f9; padding:15px; border-radius:8px; border-left: 4px solid #2563eb;'><b>↳ Nómina Interactiva ({len(df_tabla_final)} colaboradores filtrados):</b> {txt_filtros}</div>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        sort_cols = [c for c in ['EMPRESA', 'AREA', col_nombre] if c and c in df_tabla_final.columns]
+        st.dataframe(df_tabla_final[cols_nomina].sort_values(by=sort_cols), use_container_width=True)
+
+    st.divider()
+
+    # (El módulo de Evolución y Análisis de Variación Mensual sigue intacto abajo)
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
     
     fecha_inicio_grafico = pd.to_datetime('2025-01-01')
-    if fecha_corte >= fecha_inicio_grafico:
-        rango_fechas = pd.date_range(start=fecha_inicio_grafico, end=fecha_corte, freq='ME')
-    else:
-        rango_fechas = pd.date_range(start=fecha_corte.replace(month=1, day=1), end=fecha_corte, freq='ME')
-        
-    historia = []
-    for f in rango_fechas:
-        historia.append({'Fecha': f, 'Dotación': len(get_dotacion_a_fecha(df_universo, f))})
+    rango_fechas = pd.date_range(start=fecha_inicio_grafico if fecha_corte >= fecha_inicio_grafico else fecha_corte.replace(month=1, day=1), end=fecha_corte, freq='ME')
+    historia = [{'Fecha': f, 'Dotación': len(get_dotacion_a_fecha(df_universo, f))} for f in rango_fechas]
     
     if historia:
         df_historia = pd.DataFrame(historia)
-        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 
-                    7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
         
-        fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-        fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
-                               line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
-        fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
-        fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
-        fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60), font=dict(color="#475569")) 
-        
-        st.plotly_chart(fig_evol, use_container_width=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Profundo de Variación</h3>", unsafe_allow_html=True)
         col_sel, _ = st.columns([1, 2])
         with col_sel:
-            mes_drill = st.selectbox("Seleccione un mes para auditar:", df_historia['Mes_Esp'].tolist(), index=len(df_historia)-1)
+            mes_drill = st.selectbox("Seleccione un mes para auditar la rotación:", df_historia['Mes_Esp'].tolist(), index=len(df_historia)-1)
             
         fecha_elegida = df_historia.loc[df_historia['Mes_Esp'] == mes_drill, 'Fecha'].iloc[0]
         
-        altas_mes = df_universo[(df_universo['FECHA_ING_DT'].dt.year == fecha_elegida.year) & 
-                                (df_universo['FECHA_ING_DT'].dt.month == fecha_elegida.month)].copy()
-        bajas_mes = df_universo[(df_universo['FECHA_EGR_DT'].dt.year == fecha_elegida.year) & 
-                                (df_universo['FECHA_EGR_DT'].dt.month == fecha_elegida.month)].copy()
-        crec_neto = len(altas_mes) - len(bajas_mes)
-
+        altas_mes = df_universo[(df_universo['FECHA_ING_DT'].dt.year == fecha_elegida.year) & (df_universo['FECHA_ING_DT'].dt.month == fecha_elegida.month)].copy()
+        bajas_mes = df_universo[(df_universo['FECHA_EGR_DT'].dt.year == fecha_elegida.year) & (df_universo['FECHA_EGR_DT'].dt.month == fecha_elegida.month)].copy()
+        
         cm1, cm2, cm3 = st.columns(3)
         cm1.metric(f"Altas en {mes_drill}", len(altas_mes))
         cm2.metric(f"Bajas en {mes_drill}", len(bajas_mes))
-        cm3.metric("Crecimiento Neto", crec_neto, delta=crec_neto)
+        cm3.metric("Crecimiento Neto", len(altas_mes) - len(bajas_mes), delta=len(altas_mes) - len(bajas_mes))
 
         if len(altas_mes) > 0 or len(bajas_mes) > 0:
             tab_altas, tab_bajas = st.tabs(["Análisis de Ingresos", "Análisis de Bajas"])
-            
             with tab_altas:
                 if len(altas_mes) > 0:
                     altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
                     res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
-                    total_a = res_a['Cant'].sum()
-                    res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/total_a*100).round(1).astype(str) + "%)"
-                    
+                    res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/res_a['Cant'].sum()*100).round(1).astype(str) + "%)"
                     fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
                     fig_a.update_traces(hovertemplate="<b>%{x}</b><br>Altas: %{text}<extra></extra>")
                     fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                     st.plotly_chart(fig_a, use_container_width=True)
-                    
-                    with st.expander("Ver nómina de colaboradores ingresantes"):
-                        cols_a = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c and c in altas_mes.columns]
-                        st.dataframe(altas_mes[cols_a].sort_values(by=['EMPRESA', 'AREA']), use_container_width=True)
-                else:
-                    st.info("No se registraron ingresos en este periodo.")
-                    
+                    with st.expander("Ver detalle de colaboradores ingresantes"):
+                        cols_a = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE INGRESO'] if c in altas_mes.columns]
+                        st.dataframe(altas_mes[cols_a], use_container_width=True)
             with tab_bajas:
                 if len(bajas_mes) > 0:
                     bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
                     res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
-                    total_b = res_b['Cant'].sum()
-                    res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/total_b*100).round(1).astype(str) + "%)"
-                    
+                    res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/res_b['Cant'].sum()*100).round(1).astype(str) + "%)"
                     fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
                     fig_b.update_traces(hovertemplate="<b>%{x}</b><br>Bajas: %{text}<extra></extra>")
                     fig_b.update_layout(xaxis_title="", yaxis_title="Bajas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                     st.plotly_chart(fig_b, use_container_width=True)
-                    
-                    with st.expander("Ver nómina de colaboradores dados de baja"):
-                        cols_b = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c and c in bajas_mes.columns]
-                        st.dataframe(bajas_mes[cols_b].sort_values(by=['EMPRESA', 'AREA']), use_container_width=True)
-                else:
-                    st.info("No se registraron bajas en este periodo.")
-
-    st.divider()
-
-    # 9. GRÁFICOS CLICKEABLES
-    st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en cualquier barra o porción de los gráficos inferiores para ver la nómina exacta de esa categoría.</p>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Estructura por Empresa</h3>", unsafe_allow_html=True)
-        df_emp = df_periodo.groupby('EMPRESA').size().reset_index(name='Cant')
-        if not df_emp.empty:
-            total_emp = df_emp['Cant'].sum()
-            df_emp['Etiqueta'] = df_emp['Cant'].astype(str) + " (" + (df_emp['Cant']/total_emp*100).round(1).astype(str) + "%)"
-            fig_emp = px.bar(df_emp, x='EMPRESA', y='Cant', text='Etiqueta', color='EMPRESA', color_discrete_sequence=paleta_neutra)
-            fig_emp.update_traces(hovertemplate="<b>%{x}</b><br>Dotación: %{text}<extra></extra>")
-            fig_emp.update_layout(xaxis_title="", yaxis_title="Dotación", plot_bgcolor='#ffffff', showlegend=False, font=dict(color="#475569"))
-            
-            try:
-                # Captura de Clic
-                evt_emp = st.plotly_chart(fig_emp, use_container_width=True, on_select="rerun")
-                if evt_emp and evt_emp.get('selection', {}).get('points'):
-                    cli_val = evt_emp['selection']['points'][0].get('x')
-                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Nómina de {cli_val}</b></div>", unsafe_allow_html=True)
-                    st.dataframe(df_periodo[df_periodo['EMPRESA'] == cli_val][cols_nomina], use_container_width=True)
-            except TypeError:
-                st.plotly_chart(fig_emp, use_container_width=True)
-        
-    with col2:
-        st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Corte por Localidad</h3>", unsafe_allow_html=True)
-        if not df_periodo.empty:
-            fig_loc = px.pie(df_periodo, names='LOCALIDAD', hole=0.4, color_discrete_sequence=paleta_neutra)
-            fig_loc.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Dotación: %{value} (%{percent})<extra></extra>")
-            fig_loc.update_layout(font=dict(color="#475569"))
-            
-            try:
-                # Captura de Clic
-                evt_loc = st.plotly_chart(fig_loc, use_container_width=True, on_select="rerun")
-                if evt_loc and evt_loc.get('selection', {}).get('points'):
-                    pt = evt_loc['selection']['points'][0]
-                    cli_val = pt.get('label', pt.get('x'))
-                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Nómina en {cli_val}</b></div>", unsafe_allow_html=True)
-                    st.dataframe(df_periodo[df_periodo['LOCALIDAD'] == cli_val][cols_nomina], use_container_width=True)
-            except TypeError:
-                st.plotly_chart(fig_loc, use_container_width=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    col3, col4 = st.columns(2)
-
-    with col3:
-        st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Distribución por Antigüedad</h3>", unsafe_allow_html=True)
-        if not df_periodo.empty:
-            res_ant = df_periodo['RANGO_ANTIGUEDAD'].value_counts().reindex(labels_ant).reset_index()
-            res_ant.columns = ['RANGO', 'CANTIDAD']
-            tot_ant = res_ant['CANTIDAD'].sum()
-            res_ant['ETIQUETA'] = res_ant['CANTIDAD'].astype(str) + " (" + (res_ant['CANTIDAD']/tot_ant*100).round(1).astype(str) + "%)"
-            
-            fig_ant = px.bar(res_ant, x='RANGO', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[1]])
-            fig_ant.update_traces(hovertemplate="<b>Rango: %{x}</b><br>Colaboradores: %{text}<extra></extra>")
-            fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-            
-            try:
-                # Captura de Clic
-                evt_ant = st.plotly_chart(fig_ant, use_container_width=True, on_select="rerun")
-                if evt_ant and evt_ant.get('selection', {}).get('points'):
-                    cli_val = evt_ant['selection']['points'][0].get('x')
-                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Nómina de Antigüedad: {cli_val}</b></div>", unsafe_allow_html=True)
-                    st.dataframe(df_periodo[df_periodo['RANGO_ANTIGUEDAD'] == cli_val][cols_nomina], use_container_width=True)
-            except TypeError:
-                st.plotly_chart(fig_ant, use_container_width=True)
-
-    with col4:
-        st.markdown("<h3 style='font-size: 16px; font-weight: 600;'>Top 10 Colaboradores por Líder</h3>", unsafe_allow_html=True)
-        if col_lider and not df_periodo.empty:
-            df_lider = df_periodo.groupby(col_lider).size().reset_index(name='CANTIDAD')
-            df_lider = df_lider[df_lider[col_lider] != 'NAN'].sort_values('CANTIDAD', ascending=False).head(10)
-            
-            fig_lid = px.bar(df_lider, y=col_lider, x='CANTIDAD', text='CANTIDAD', orientation='h', color_discrete_sequence=[paleta_neutra[0]])
-            fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
-            fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas a cargo", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-            
-            try:
-                # Captura de Clic
-                evt_lid = st.plotly_chart(fig_lid, use_container_width=True, on_select="rerun")
-                if evt_lid and evt_lid.get('selection', {}).get('points'):
-                    cli_val = evt_lid['selection']['points'][0].get('y')
-                    st.markdown(f"<div style='background:#f8fafc; padding:10px; border-radius:8px; font-size:13px;'><b>↳ Equipo a cargo de: {cli_val}</b></div>", unsafe_allow_html=True)
-                    st.dataframe(df_periodo[df_periodo[col_lider] == cli_val][cols_nomina], use_container_width=True)
-            except TypeError:
-                st.plotly_chart(fig_lid, use_container_width=True)
-        else:
-            st.info("Asegúrate de tener una columna llamada 'LIDER' o 'JEFE' en tu base.")
+                    with st.expander("Ver detalle de colaboradores dados de baja"):
+                        cols_b = [c for c in ['CUIL', col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA DE EGRESO', 'MOTIVO DE EGRESO'] if c in bajas_mes.columns]
+                        st.dataframe(bajas_mes[cols_b], use_container_width=True)
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
