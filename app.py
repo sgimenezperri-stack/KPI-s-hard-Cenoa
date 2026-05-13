@@ -265,12 +265,11 @@ try:
             df_chart_lid = cross_filter('lid')
             if not df_chart_lid.empty:
                 df_lider = df_chart_lid.groupby(col_lider).size().reset_index(name='CANTIDAD')
-                df_lider = df_lider[df_lider[col_lider] != 'NAN'].sort_values('CANTIDAD', ascending=False).head(10)
+                df_lider = df_lider[df_lider[col_lider] != 'NO DECLARADO'].sort_values('CANTIDAD', ascending=False).head(10)
                 fig_lid = px.bar(df_lider, y=col_lider, x='CANTIDAD', text='CANTIDAD', orientation='h', color_discrete_sequence=[paleta_neutra[2]])
                 fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
                 fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_lid, "k_lid")
-        else: st.info("No se detectó columna 'LIDER' o 'JEFE'.")
 
     df_tabla_final = cross_filter('none')
     filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else ""] if f]
@@ -377,24 +376,28 @@ try:
                         st.plotly_chart(fig_tipo, use_container_width=True)
                 
                 with col_m2:
-                    st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Cruce: Tipo de Movimiento vs. Potencial</h4>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Evaluación de Potencial en Promociones</h4>", unsafe_allow_html=True)
                     if 'TIPO_MOV' in df_mov_periodo.columns and 'POTENCIAL' in df_mov_periodo.columns:
-                        # 💡 Mejora: Gráfico de barras agrupadas para comparar todos los tipos de movimientos
-                        res_pot = df_mov_periodo.groupby(['POTENCIAL', 'TIPO_MOV']).size().reset_index(name='CANTIDAD')
-                        res_pot['POTENCIAL'] = res_pot['POTENCIAL'].replace(['NAN', 'NO APLICA', ''], 'SIN EVALUAR')
+                        # 💡 Mejora: Filtramos exclusivamente las PROMOCIONES para analizar el potencial real
+                        df_promo = df_mov_periodo[df_mov_periodo['TIPO_MOV'].str.contains('PROMOC', na=False, case=False)].copy()
                         
-                        fig_pot = px.bar(res_pot, x='TIPO_MOV', y='CANTIDAD', color='POTENCIAL', text='CANTIDAD', barmode='group', color_discrete_sequence=paleta_neutra)
-                        fig_pot.update_traces(hovertemplate="<b>%{x}</b><br>Potencial: %{data.name}<br>Cantidad: %{text}<extra></extra>")
-                        fig_pot.update_layout(xaxis_title="Tipo de Movimiento", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10), legend_title="Eval. Potencial")
-                        st.plotly_chart(fig_pot, use_container_width=True)
+                        if not df_promo.empty:
+                            df_promo['POTENCIAL'] = df_promo['POTENCIAL'].replace(['NAN', 'NO APLICA', 'NO DECLARADO', ''], 'SIN EVALUAR')
+                            res_pot = df_promo.groupby('POTENCIAL').size().reset_index(name='CANTIDAD')
+                            tot_promo = res_pot['CANTIDAD'].sum()
+                            res_pot['ETIQUETA'] = res_pot['CANTIDAD'].astype(str) + " (" + (res_pot['CANTIDAD']/tot_promo*100).round(1).astype(str) + "%)"
+                            
+                            fig_pot = px.bar(res_pot, x='POTENCIAL', y='CANTIDAD', text='ETIQUETA', color='POTENCIAL', color_discrete_sequence=paleta_neutra)
+                            fig_pot.update_traces(hovertemplate="<b>Potencial: %{x}</b><br>Promociones: %{text}<extra></extra>")
+                            fig_pot.update_layout(xaxis_title="Resultado de Evaluación", yaxis_title="Cantidad de Promociones", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10), showlegend=False)
+                            st.plotly_chart(fig_pot, use_container_width=True)
+                        else:
+                            st.info("No se registraron promociones en el periodo seleccionado para analizar.")
             
                 with st.expander("Ver detalle histórico de movimientos y promociones"):
-                    # Solución al listado vacío: Ordenar primero y luego seleccionar columnas existentes
                     cols_mov = [c for c in ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV', 'EMP_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'POTENCIAL'] if c in df_mov_periodo.columns]
                     df_show_mov = df_mov_periodo.sort_values(by='FECHA_MOV_DT', ascending=False)[cols_mov]
                     st.dataframe(df_show_mov, use_container_width=True)
-            else:
-                st.info("No hay registros de movimientos internos en el rango seleccionado.")
         else:
             st.warning("No se detectó la columna de Fechas en la pestaña de Movimientos.")
     except Exception as e:
