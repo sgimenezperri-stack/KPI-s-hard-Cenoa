@@ -113,7 +113,6 @@ try:
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
         mes_sel = st.selectbox("MES", ["Todos"] + list(range(1, 13)), index=hoy.month, format_func=lambda x: "TODOS" if x == "Todos" else meses_nombres[x])
         
-    # Lógica de cálculo si selecciona "Todos"
     if mes_sel == "Todos":
         mes_calc = hoy.month if anio_analisis == hoy.year else 12
         es_acumulado = True
@@ -166,7 +165,6 @@ try:
     posibles_nombres = ['APELLIDO Y NOMBRE', 'APELLIDOS Y NOMBRES', 'NOMBRE Y APELLIDO', 'NOMBRE', 'COLABORADOR']
     col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
     
-    # Inyección de las nuevas columnas solicitadas
     cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'CATEGORIA', 'CATEGORIA DE VARIABLE', 'FRECUENCIA DEL VARIABLE', 'FECHA DE INGRESO']
     if col_nombre: cols_base.insert(1, col_nombre)
     cols_nomina = [c for c in cols_base if c in df_periodo.columns]
@@ -225,7 +223,7 @@ try:
     st.divider()
 
     # =====================================================================
-    # 5. CROSS-FILTERING DASHBOARD (AHORA CON CATEGORÍA)
+    # 5. CROSS-FILTERING DASHBOARD
     # =====================================================================
     st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Paneles Interactivos (Cross-Filtering)</h3>", unsafe_allow_html=True)
     
@@ -238,7 +236,7 @@ try:
     if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict) and st.session_state.k_loc.get('selection', {}).get('points'): pt = st.session_state.k_loc['selection']['points'][0]; sel_click_localidad = pt.get('label', pt.get('x'))
     if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict) and st.session_state.k_ant.get('selection', {}).get('points'): sel_click_antiguedad = st.session_state.k_ant['selection']['points'][0].get('x')
     if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): sel_click_lider = st.session_state.k_lid['selection']['points'][0].get('y')
-    if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('x')
+    if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('y')
 
     def cross_filter(exclude_chart):
         df_x = df_periodo.copy()
@@ -293,19 +291,24 @@ try:
                 fig_lid.update_traces(hovertemplate="<b>Líder: %{y}</b><br>Personas a cargo: %{x}<extra></extra>")
                 fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_lid, "k_lid")
-        else: st.info("No se detectó columna 'LIDER' o 'JEFE'.")
 
-    col_x5, col_x6 = st.columns(2)
-    with col_x5:
-        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Categoría</h4>", unsafe_allow_html=True)
-        df_chart_cat = cross_filter('cat')
-        if not df_chart_cat.empty and 'CATEGORIA' in df_chart_cat.columns:
-            df_cat = df_chart_cat.groupby('CATEGORIA').size().reset_index(name='CANTIDAD')
-            df_cat['ETIQUETA'] = df_cat['CANTIDAD'].astype(str) + " (" + (df_cat['CANTIDAD']/df_cat['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
-            fig_cat = px.bar(df_cat.sort_values('CANTIDAD', ascending=False), x='CATEGORIA', y='CANTIDAD', text='ETIQUETA', color_discrete_sequence=[paleta_neutra[3]])
-            fig_cat.update_traces(hovertemplate="<b>Categoría: %{x}</b><br>Colaboradores: %{text}<extra></extra>")
-            fig_cat.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-            draw_safe_interactive_chart(fig_cat, "k_cat")
+    # --- NUEVO: GRÁFICO DE CATEGORÍAS (ANCHO COMPLETO Y HORIZONTAL) ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Categoría</h4>", unsafe_allow_html=True)
+    df_chart_cat = cross_filter('cat')
+    if not df_chart_cat.empty and 'CATEGORIA' in df_chart_cat.columns:
+        df_cat = df_chart_cat.groupby('CATEGORIA').size().reset_index(name='CANTIDAD')
+        df_cat['CATEGORIA'] = df_cat['CATEGORIA'].replace('NAN', 'NO DECLARADA')
+        df_cat['ETIQUETA'] = df_cat['CANTIDAD'].astype(str) + " (" + (df_cat['CANTIDAD']/df_cat['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
+        df_cat = df_cat.sort_values('CANTIDAD', ascending=True) # Ascendente para que el mayor quede arriba
+        
+        # Altura dinámica para que no se aplasten las barras (35px por categoría)
+        altura_dinamica = max(350, len(df_cat) * 35)
+        
+        fig_cat = px.bar(df_cat, y='CATEGORIA', x='CANTIDAD', text='ETIQUETA', orientation='h', color_discrete_sequence=[paleta_neutra[3]])
+        fig_cat.update_traces(hovertemplate="<b>Categoría: %{y}</b><br>Colaboradores: %{text}<extra></extra>", textposition='outside')
+        fig_cat.update_layout(height=altura_dinamica, xaxis_title="Cantidad de Colaboradores", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"))
+        draw_safe_interactive_chart(fig_cat, "k_cat")
 
     df_tabla_final = cross_filter('none')
     filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else "", f"Categoría: {sel_click_categoria}" if sel_click_categoria else ""] if f]
@@ -316,13 +319,86 @@ try:
     st.divider()
 
     # =====================================================================
+    # 6. ANÁLISIS MENSUAL DE ROTACIÓN
+    # =====================================================================
+    st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
+    
+    fecha_inicio_grafico = pd.to_datetime('2025-01-01')
+    rango_fechas = pd.date_range(start=fecha_inicio_grafico if fecha_corte >= fecha_inicio_grafico else fecha_corte.replace(month=1, day=1), end=fecha_corte, freq='ME')
+    historia = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas]
+    
+    if historia:
+        df_historia = pd.DataFrame(historia)
+        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
+        
+        col_sel, _ = st.columns([1, 2])
+        with col_sel: mes_drill = st.selectbox("Seleccione un mes para auditar la rotación:", df_historia['Mes_Esp'].tolist(), index=len(df_historia)-1)
+            
+        fecha_elegida = df_historia.loc[df_historia['Mes_Esp'] == mes_drill, 'Fecha'].iloc[0]
+        altas_mes = df_filt[(df_filt['FECHA_ING_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_ING_DT'].dt.month == fecha_elegida.month)].copy()
+        bajas_mes = df_filt[(df_filt['FECHA_EGR_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_EGR_DT'].dt.month == fecha_elegida.month)].copy()
+        
+        cm1, cm2, cm3 = st.columns(3)
+        cm1.metric(f"Altas en {mes_drill}", len(altas_mes))
+        cm2.metric(f"Bajas en {mes_drill}", len(bajas_mes))
+        cm3.metric("Crecimiento Neto", len(altas_mes) - len(bajas_mes), delta=len(altas_mes) - len(bajas_mes))
+
+        if len(altas_mes) > 0 or len(bajas_mes) > 0:
+            tab_altas, tab_bajas = st.tabs(["Análisis de Ingresos", "Análisis de Bajas"])
+            
+            with tab_altas:
+                if len(altas_mes) > 0:
+                    altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
+                    res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                    res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/res_a['Cant'].sum()*100).round(1).astype(str) + "%)"
+                    fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
+                    fig_a.update_traces(hovertemplate="<b>%{x}</b><br>Altas: %{text}<extra></extra>")
+                    fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
+                    st.plotly_chart(fig_a, use_container_width=True)
+                    with st.expander("Ver detalle de colaboradores ingresantes"):
+                        st.dataframe(altas_mes[[c for c in cols_base if c in altas_mes.columns]], use_container_width=True)
+            
+            with tab_bajas:
+                if len(bajas_mes) > 0:
+                    bajas_mes['ANTIGÜEDAD AL EGRESO'] = (bajas_mes['FECHA_EGR_DT'] - bajas_mes['FECHA_ING_DT']).dt.days / 365.25
+                    bajas_mes['< 1 AÑO'] = np.where(bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1, '⚠️ Sí', 'No')
+                    bajas_tempranas = len(bajas_mes[bajas_mes['ANTIGÜEDAD AL EGRESO'] < 1])
+                    
+                    if bajas_tempranas > 0:
+                        st.markdown(f"<div style='background-color: #fef2f2; border-left: 4px solid #b91c1c; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #991b1b; font-weight: 600; font-size: 14px; margin: 0;'>Atención: {bajas_tempranas} colaborador(es) se dieron de baja con menos de 1 año de antigüedad. Esto representa el <b>{(bajas_tempranas / len(bajas_mes) * 100):.1f}%</b> del total de egresos.</p></div>", unsafe_allow_html=True)
+                    
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1:
+                        st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Bajas por Sede y Área</h4>", unsafe_allow_html=True)
+                        bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
+                        res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                        res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/res_b['Cant'].sum()*100).round(1).astype(str) + "%)"
+                        fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
+                        fig_b.update_traces(hovertemplate="<b>%{x}</b><br>Bajas: %{text}<extra></extra>")
+                        fig_b.update_layout(xaxis_title="", yaxis_title="Bajas", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
+                        st.plotly_chart(fig_b, use_container_width=True)
+                        
+                    with col_b2:
+                        st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Motivos de Baja</h4>", unsafe_allow_html=True)
+                        res_mot = bajas_mes.groupby('MOTIVO DE EGRESO').size().reset_index(name='Cant')
+                        fig_mot = px.pie(res_mot, names='MOTIVO DE EGRESO', values='Cant', hole=0.4, color_discrete_sequence=paleta_neutra)
+                        fig_mot.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Cantidad: %{value} (%{percent})<extra></extra>")
+                        fig_mot.update_layout(font=dict(color="#475569"), margin=dict(t=10))
+                        st.plotly_chart(fig_mot, use_container_width=True)
+
+                    with st.expander("Ver detalle de colaboradores dados de baja"):
+                        st.dataframe(bajas_mes[[c for c in cols_base + ['FECHA DE EGRESO', 'MOTIVO DE EGRESO', '< 1 AÑO'] if c in bajas_mes.columns]], use_container_width=True)
+
+    st.divider()
+
+    # =====================================================================
     # 7. MÓDULO: MOVILIDAD INTERNA Y DESARROLLO DE TALENTO
     # =====================================================================
     try:
         df_mov = load_data_mov()
         
         if 'FECHA_MOV_DT' in df_mov.columns:
-            # Si eligió "Todos", toma todo el año. Si no, toma el mes exacto.
             if es_acumulado:
                 df_mov_periodo = df_mov[df_mov['FECHA_MOV_DT'].dt.year == anio_analisis].copy()
             else:
@@ -332,7 +408,6 @@ try:
                 st.markdown(f"<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
                 st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en el gráfico de torta para auditar los resultados de las evaluaciones de potencial.</p>", unsafe_allow_html=True)
 
-                # --- NUEVO KPI DE RIESGO DE RETENCIÓN ---
                 total_movs = len(df_mov_periodo)
                 df_mov_kpi = df_mov_periodo.merge(df_raw[[col_nombre, 'FECHA_EGR_DT']], left_on='NOMBRE', right_on=col_nombre, how='left')
                 df_mov_kpi['DIAS_POST_MOV'] = (df_mov_kpi['FECHA_EGR_DT'] - df_mov_kpi['FECHA_MOV_DT']).dt.days
@@ -340,7 +415,7 @@ try:
                 
                 if bajas_temp_mov > 0:
                     pct_fracaso = (bajas_temp_mov / total_movs) * 100
-                    st.markdown(f"<div style='background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #b45309; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ <b>Riesgo de Retención de Talento:</b> {bajas_temp_mov} de los {total_movs} movimientos/promociones del periodo (<b>{pct_fracaso:.1f}%</b>) resultaron en una baja antes de cumplir 12 meses en el nuevo rol.</p></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #b45309; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ <b>Riesgo de Retención post-Movimiento:</b> {bajas_temp_mov} de los {total_movs} colaboradores movidos/promovidos (<b>{pct_fracaso:.1f}%</b>) se dieron de baja antes de cumplir 12 meses en su nuevo rol.</p></div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div style='background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #15803d; font-weight: 600; font-size: 14px; margin: 0;'>✅ Excelente retención: Ningún talento promovido o reubicado en este periodo se ha dado de baja.</p></div>", unsafe_allow_html=True)
 
