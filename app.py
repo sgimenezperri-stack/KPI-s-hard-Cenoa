@@ -364,6 +364,13 @@ try:
             
             if not df_mov_periodo.empty:
                 st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en el gráfico de torta (Ej: Promoción) para auditar los resultados de sus evaluaciones.</p>", unsafe_allow_html=True)
+
+                # --- CAPTURA DEL CLIC EN LA TORTA DE MOVIMIENTOS ---
+                sel_click_tipo = None
+                if 'k_tipo' in st.session_state and isinstance(st.session_state.k_tipo, dict) and st.session_state.k_tipo.get('selection', {}).get('points'):
+                    sel_click_tipo = st.session_state.k_tipo['selection']['points'][0].get('label')
+
                 col_m1, col_m2 = st.columns(2)
                 
                 with col_m1:
@@ -373,31 +380,49 @@ try:
                         fig_tipo = px.pie(res_tipo, names='TIPO_MOV', values='CANTIDAD', hole=0.4, color_discrete_sequence=paleta_neutra)
                         fig_tipo.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Cantidad: %{value} (%{percent})<extra></extra>")
                         fig_tipo.update_layout(font=dict(color="#475569"), margin=dict(t=10))
-                        st.plotly_chart(fig_tipo, use_container_width=True)
+                        draw_safe_interactive_chart(fig_tipo, "k_tipo")
                 
                 with col_m2:
-                    st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Evaluación de Potencial en Promociones</h4>", unsafe_allow_html=True)
-                    if 'TIPO_MOV' in df_mov_periodo.columns and 'POTENCIAL' in df_mov_periodo.columns:
-                        # 💡 Mejora: Filtramos exclusivamente las PROMOCIONES para analizar el potencial real
-                        df_promo = df_mov_periodo[df_mov_periodo['TIPO_MOV'].str.contains('PROMOC', na=False, case=False)].copy()
-                        
-                        if not df_promo.empty:
-                            df_promo['POTENCIAL'] = df_promo['POTENCIAL'].replace(['NAN', 'NO APLICA', 'NO DECLARADO', ''], 'SIN EVALUAR')
-                            res_pot = df_promo.groupby('POTENCIAL').size().reset_index(name='CANTIDAD')
-                            tot_promo = res_pot['CANTIDAD'].sum()
-                            res_pot['ETIQUETA'] = res_pot['CANTIDAD'].astype(str) + " (" + (res_pot['CANTIDAD']/tot_promo*100).round(1).astype(str) + "%)"
-                            
-                            fig_pot = px.bar(res_pot, x='POTENCIAL', y='CANTIDAD', text='ETIQUETA', color='POTENCIAL', color_discrete_sequence=paleta_neutra)
-                            fig_pot.update_traces(hovertemplate="<b>Potencial: %{x}</b><br>Promociones: %{text}<extra></extra>")
-                            fig_pot.update_layout(xaxis_title="Resultado de Evaluación", yaxis_title="Cantidad de Promociones", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10), showlegend=False)
-                            st.plotly_chart(fig_pot, use_container_width=True)
+                    # --- FILTRO DINÁMICO SEGÚN EL CLIC ---
+                    if sel_click_tipo:
+                        df_eval = df_mov_periodo[df_mov_periodo['TIPO_MOV'] == sel_click_tipo].copy()
+                        titulo_eval = f"Evaluación de Potencial en: {sel_click_tipo}"
+                    else:
+                        # Si no hay clic, por defecto mostramos las Promociones
+                        df_promo_default = df_mov_periodo[df_mov_periodo['TIPO_MOV'].str.contains('PROMOC', na=False, case=False)]
+                        if not df_promo_default.empty:
+                            df_eval = df_promo_default.copy()
+                            titulo_eval = "Evaluación de Potencial en: PROMOCIONES"
                         else:
-                            st.info("No se registraron promociones en el periodo seleccionado para analizar.")
+                            df_eval = df_mov_periodo.copy()
+                            titulo_eval = "Evaluación de Potencial (Global)"
+
+                    st.markdown(f"<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>{titulo_eval}</h4>", unsafe_allow_html=True)
+                    
+                    if not df_eval.empty and 'POTENCIAL' in df_eval.columns:
+                        df_eval['POTENCIAL'] = df_eval['POTENCIAL'].replace(['NAN', 'NO APLICA', 'NO DECLARADO', ''], 'SIN EVALUAR')
+                        res_pot = df_eval.groupby('POTENCIAL').size().reset_index(name='CANTIDAD')
+                        res_pot['ETIQUETA'] = res_pot['CANTIDAD'].astype(str) + " (" + (res_pot['CANTIDAD']/res_pot['CANTIDAD'].sum()*100).round(1).astype(str) + "%)"
+                        
+                        fig_pot = px.bar(res_pot, x='POTENCIAL', y='CANTIDAD', text='ETIQUETA', color='POTENCIAL', color_discrete_sequence=paleta_neutra)
+                        fig_pot.update_traces(hovertemplate="<b>Potencial: %{x}</b><br>Cantidad: %{text}<extra></extra>")
+                        fig_pot.update_layout(xaxis_title="Resultado de Evaluación", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10), showlegend=False)
+                        st.plotly_chart(fig_pot, use_container_width=True)
+                    else:
+                        st.info("No hay datos de evaluación para graficar en esta categoría.")
             
                 with st.expander("Ver detalle histórico de movimientos y promociones"):
                     cols_mov = [c for c in ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV', 'EMP_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'POTENCIAL'] if c in df_mov_periodo.columns]
-                    df_show_mov = df_mov_periodo.sort_values(by='FECHA_MOV_DT', ascending=False)[cols_mov]
-                    st.dataframe(df_show_mov, use_container_width=True)
+                    df_show_mov = df_mov_periodo.copy()
+                    
+                    # Filtramos la tabla también si el usuario hizo clic
+                    if sel_click_tipo:
+                        df_show_mov = df_show_mov[df_show_mov['TIPO_MOV'] == sel_click_tipo]
+                        st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro activo:</b> Mostrando solo {sel_click_tipo}</div>", unsafe_allow_html=True)
+                        
+                    st.dataframe(df_show_mov[cols_mov].sort_values(by='FECHA_MOV_DT', ascending=False), use_container_width=True)
+            else:
+                st.info("No hay registros de movimientos internos en el rango seleccionado.")
         else:
             st.warning("No se detectó la columna de Fechas en la pestaña de Movimientos.")
     except Exception as e:
