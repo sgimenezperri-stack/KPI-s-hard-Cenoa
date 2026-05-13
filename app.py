@@ -8,7 +8,7 @@ import calendar
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Dotación | Talent Hub", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. INYECCIÓN DE CSS (DISEÑO CORPORATIVO)
+# 2. INYECCIÓN DE CSS (DISEÑO CORPORATIVO Y NEUTRO)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -265,7 +265,7 @@ try:
 
     if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict):
         pts = st.session_state.k_lid.get('selection', {}).get('points', [])
-        if pts: sel_click_lider = pts[0].get('y') # La barra horizontal guarda la categoría en 'y'
+        if pts: sel_click_lider = pts[0].get('y')
 
     # C. Motor de Filtrado Cruzado
     def cross_filter(exclude_chart):
@@ -313,7 +313,8 @@ try:
             fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
             draw_safe_interactive_chart(fig_ant, "k_ant")
 
-    with col4:
+    # CORRECCIÓN APLICADA AQUÍ: Reemplazo 'col4' por 'col_x4'
+    with col_x4:
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top 10 Colaboradores por Líder</h4>", unsafe_allow_html=True)
         if col_lider:
             df_chart_lid = cross_filter('lid')
