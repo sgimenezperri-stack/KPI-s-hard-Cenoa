@@ -128,19 +128,24 @@ try:
     df_filt = df_raw.copy()
     
     with f4: anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
+    
+    # MEJORA: Cambio a MULTISELECT para meses en el Filtro Global
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
-        mes_sel = st.selectbox("MES", ["Todos"] + list(range(1, 13)), index=hoy.month, format_func=lambda x: "TODOS (Acumulado)" if x == "Todos" else meses_nombres[x])
+        opciones_meses = list(range(1, 13))
+        default_meses = list(range(1, hoy.month + 1)) if anio_analisis == hoy.year else opciones_meses
         
-    if mes_sel == "Todos":
-        mes_calc = hoy.month if anio_analisis == hoy.year else 12
-        es_acumulado = True
-    else:
-        mes_calc = mes_sel
-        es_acumulado = False
+        meses_sel = st.multiselect("MESES", opciones_meses, default=default_meses, format_func=lambda x: meses_nombres[x])
+        if not meses_sel:
+            meses_sel = default_meses
+            st.warning("Debe seleccionar al menos un mes.")
+            
+    mes_fin = max(meses_sel)
+    mes_inicio = min(meses_sel)
 
-    ultimo_dia = calendar.monthrange(anio_analisis, mes_calc)[1]
-    fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_calc:02d}-{ultimo_dia}")
+    ultimo_dia = calendar.monthrange(anio_analisis, mes_fin)[1]
+    fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_fin:02d}-{ultimo_dia}")
+    fecha_inicio_periodo = pd.to_datetime(f"{anio_analisis}-{mes_inicio:02d}-01")
 
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
@@ -178,6 +183,7 @@ try:
                 sel_lider = st.multiselect("LÍDER", get_opts(col_lider, df_filt), placeholder="Todos")
                 if sel_lider: df_filt = df_filt[df_filt[col_lider].isin(sel_lider)]
 
+    # El snapshot se toma siempre al final del periodo (mes_fin)
     df_periodo = df_filt[(df_filt['FECHA_ING_DT'] <= fecha_corte) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_corte))].copy()
     dot_actual = len(df_periodo)
 
@@ -192,10 +198,11 @@ try:
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
-    if es_acumulado:
-        fecha_inicio_historia = pd.to_datetime('2025-01-01')
+    # Pre-cálculos compartidos de Historia (El gráfico muestra desde el mes 1 si hay más de 1 mes, o rolling 12)
+    if len(meses_sel) > 1:
+        fecha_inicio_historia = pd.to_datetime(f"{anio_analisis}-01-01")
     else:
-        fecha_inicio_historia = pd.to_datetime(f"{anio_analisis - 1}-{mes_calc:02d}-01")
+        fecha_inicio_historia = pd.to_datetime(f"{anio_analisis - 1}-{mes_fin:02d}-01")
         
     rango_fechas_historia = pd.date_range(start=fecha_inicio_historia, end=fecha_corte, freq='ME')
     historia_datos = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas_historia]
@@ -213,16 +220,16 @@ try:
     # TAB 1: DOTACIÓN Y ESTRUCTURA
     # ---------------------------------------------------------------------
     with tab_dotacion:
-        mes_ant_calc = mes_calc - 1 if mes_calc > 1 else 12
-        anio_ant_calc = anio_analisis if mes_calc > 1 else anio_analisis - 1
+        mes_ant_calc = mes_fin - 1 if mes_fin > 1 else 12
+        anio_ant_calc = anio_analisis if mes_fin > 1 else anio_analisis - 1
         ult_dia_ant = calendar.monthrange(anio_ant_calc, mes_ant_calc)[1]
         fecha_mes_ant = pd.to_datetime(f"{anio_ant_calc}-{mes_ant_calc:02d}-{ult_dia_ant}")
         dot_mes_ant = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_mes_ant) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_mes_ant))])
         dif_mes = int(dot_actual - dot_mes_ant)
         pct_mes = (dif_mes / dot_mes_ant * 100) if dot_mes_ant > 0 else 0
         
-        ult_dia_inter = calendar.monthrange(anio_analisis - 1, mes_calc)[1]
-        fecha_anio_ant = pd.to_datetime(f"{anio_analisis - 1}-{mes_calc:02d}-{ult_dia_inter}")
+        ult_dia_inter = calendar.monthrange(anio_analisis - 1, mes_fin)[1]
+        fecha_anio_ant = pd.to_datetime(f"{anio_analisis - 1}-{mes_fin:02d}-{ult_dia_inter}")
         dot_anio_ant = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_anio_ant) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_anio_ant))])
         dif_anio = int(dot_actual - dot_anio_ant)
         pct_anio = (dif_anio / dot_anio_ant * 100) if dot_anio_ant > 0 else 0
@@ -233,7 +240,7 @@ try:
         pct_prueba = (en_prueba / dot_actual * 100) if dot_actual > 0 else 0
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Dotación en Periodo", dot_actual)
+        c1.metric("Dotación Actual", dot_actual)
         c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=f"{dif_mes} ({pct_mes:+.1f}%)")
         c3.metric("Vs. Año Anterior", f"{dot_actual}", delta=f"{dif_anio} ({pct_anio:+.1f}%)")
         c4.metric("En Período de Prueba", f"{en_prueba}", delta=f"{pct_prueba:.1f}% de la estructura", delta_color="off")
@@ -380,24 +387,29 @@ try:
 
         st.divider()
 
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
+        # MEJORA: Filtro Multi-Selección en Ingresos y Egresos
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ingresos y Egresos</h3>", unsafe_allow_html=True)
         
         if not df_historia.empty:
-            opciones_meses = ["Acumulado del Año (Todos)"] + df_historia['Mes_Esp'].tolist()
+            opciones_drill = df_historia['Mes_Esp'].tolist()
             
             col_sel, _ = st.columns([1, 2])
             with col_sel: 
-                mes_drill = st.selectbox("Seleccione un periodo para auditar la rotación:", opciones_meses, index=0)
+                meses_drill = st.multiselect("Seleccione uno o más periodos para auditar:", opciones_drill, default=opciones_drill)
                 
-            if mes_drill == "Acumulado del Año (Todos)":
-                altas_mes = df_filt[(df_filt['FECHA_ING_DT'].dt.year == anio_analisis) & (df_filt['FECHA_ING_DT'].dt.month <= mes_calc)].copy()
-                bajas_mes = df_filt[(df_filt['FECHA_EGR_DT'].dt.year == anio_analisis) & (df_filt['FECHA_EGR_DT'].dt.month <= mes_calc)].copy()
-                label_periodo = f"Acumulado {anio_analisis}"
-            else:
-                fecha_elegida = df_historia.loc[df_historia['Mes_Esp'] == mes_drill, 'Fecha'].iloc[0]
-                altas_mes = df_filt[(df_filt['FECHA_ING_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_ING_DT'].dt.month == fecha_elegida.month)].copy()
-                bajas_mes = df_filt[(df_filt['FECHA_EGR_DT'].dt.year == fecha_elegida.year) & (df_filt['FECHA_EGR_DT'].dt.month == fecha_elegida.month)].copy()
-                label_periodo = mes_drill
+            if not meses_drill:
+                meses_drill = opciones_drill
+                
+            fechas_elegidas = df_historia[df_historia['Mes_Esp'].isin(meses_drill)]['Fecha']
+            meses_num = fechas_elegidas.dt.month.tolist()
+            anios_num = fechas_elegidas.dt.year.tolist()
+            
+            mask_altas = (df_filt['FECHA_ING_DT'].dt.year.isin(anios_num)) & (df_filt['FECHA_ING_DT'].dt.month.isin(meses_num))
+            mask_bajas = (df_filt['FECHA_EGR_DT'].dt.year.isin(anios_num)) & (df_filt['FECHA_EGR_DT'].dt.month.isin(meses_num))
+            
+            altas_mes = df_filt[mask_altas].copy()
+            bajas_mes = df_filt[mask_bajas].copy()
+            label_periodo = f"{len(meses_drill)} Mes(es) Seleccionados"
             
             cm1, cm2, cm3 = st.columns(3)
             cm1.metric(f"Altas en {label_periodo}", len(altas_mes))
@@ -456,10 +468,11 @@ try:
             df_mov = load_data_mov()
             
             if 'FECHA_MOV_DT' in df_mov.columns:
-                if es_acumulado:
-                    df_mov_periodo = df_mov[df_mov['FECHA_MOV_DT'].dt.year == anio_analisis].copy()
-                else:
-                    df_mov_periodo = df_mov[(df_mov['FECHA_MOV_DT'].dt.year == anio_analisis) & (df_mov['FECHA_MOV_DT'].dt.month == mes_calc)].copy()
+                # MEJORA: Filtro por todos los meses seleccionados
+                df_mov_periodo = df_mov[
+                    (df_mov['FECHA_MOV_DT'].dt.year == anio_analisis) & 
+                    (df_mov['FECHA_MOV_DT'].dt.month.isin(meses_sel))
+                ].copy()
                 
                 if not df_mov_periodo.empty:
                     st.markdown(f"<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
@@ -548,17 +561,18 @@ try:
     with tab_rotacion:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación y Selección</h3>", unsafe_allow_html=True)
         
-        if es_acumulado:
-            fecha_inicio_rot = pd.to_datetime(f"{anio_analisis}-01-01")
-        else:
-            fecha_inicio_rot = pd.to_datetime(f"{anio_analisis}-{mes_calc:02d}-01")
-            
-        dot_inicial_rot = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_rot))])
+        dot_inicial_rot = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
         dot_final_rot = dot_actual 
         dot_promedio_rot = (dot_inicial_rot + dot_final_rot) / 2
         dot_promedio_calc = dot_promedio_rot if dot_promedio_rot > 0 else 1
         
-        bajas_periodo_rot = df_filt[(df_filt['FECHA_EGR_DT'] >= fecha_inicio_rot) & (df_filt['FECHA_EGR_DT'] <= fecha_corte)].copy()
+        # Filtro estricto por el rango y meses seleccionados
+        bajas_periodo_rot = df_filt[
+            (df_filt['FECHA_EGR_DT'] >= fecha_inicio_periodo) & 
+            (df_filt['FECHA_EGR_DT'] <= fecha_corte) &
+            (df_filt['FECHA_EGR_DT'].dt.month.isin(meses_sel))
+        ].copy()
+        
         tot_bajas_rot = len(bajas_periodo_rot)
         rot_total_pct = (tot_bajas_rot / dot_promedio_calc) * 100
         
@@ -577,8 +591,14 @@ try:
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
 
         # =====================================================================
-        # KPI EFECTIVIDAD SELECCIÓN GLOBAL (Cálculo Correcto y Color)
+        # KPI EFECTIVIDAD SELECCIÓN GLOBAL
         # =====================================================================
+        ingresos_globales = df_filt[
+            (df_filt['FECHA_ING_DT'] >= fecha_inicio_periodo) & 
+            (df_filt['FECHA_ING_DT'] <= fecha_corte) &
+            (df_filt['FECHA_ING_DT'].dt.month.isin(meses_sel))
+        ]
+        
         if not bajas_periodo_rot.empty:
             bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
         else:
@@ -601,10 +621,10 @@ try:
         efectividad_sel_com = 100 - ((bajas_prueba_com / poblacion_en_prueba_com * 100) if poblacion_en_prueba_com > 0 else 0)
 
         # =====================================================================
-        # CÁLCULOS DE STAFF Y OPERACIÓN (Restaurados)
+        # CÁLCULOS DE STAFF Y OPERACIÓN
         # =====================================================================
         df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
-        dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_rot))])
+        dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
         dot_fin_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_corte) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] > fecha_corte))])
         prom_staff = (dot_ini_staff + dot_fin_staff) / 2
         prom_staff_calc = prom_staff if prom_staff > 0 else 1
@@ -612,7 +632,7 @@ try:
         rot_staff_pct = (bajas_staff / prom_staff_calc) * 100
         
         df_op = df_filt[~df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
-        dot_ini_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] >= fecha_inicio_rot))])
+        dot_ini_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
         dot_fin_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_corte) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] > fecha_corte))])
         prom_op = (dot_ini_op + dot_fin_op) / 2
         prom_op_calc = prom_op if prom_op > 0 else 1
@@ -626,7 +646,6 @@ try:
         cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias", delta_color="inverse")
         cr3.metric("Rot. Voluntaria Temprana", f"{rot_vol_temp_pct:.1f}%", f"{tot_bajas_vol_temp_rot} renuncias < 1 año", delta_color="inverse")
         
-        # Función para dibujar las tarjetas con el condicional de colores (Rojo/Verde)
         def get_efectividad_html(label, score, bajas, pob):
             color = "#15803d" if score >= 90 else "#dc2626"
             bg = "#f0fdf4" if score >= 90 else "#fef2f2"
