@@ -28,7 +28,6 @@ st.markdown("""
     hr { border-color: #e2e8f0; }
     .stExpander { background-color: #ffffff; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; }
     
-    /* MEJORA: Diseño destacado de las pestañas superiores */
     .stTabs [data-baseweb="tab-list"] {
         gap: 30px;
         border-bottom: 2px solid #e2e8f0;
@@ -40,8 +39,8 @@ st.markdown("""
         border-radius: 4px 4px 0px 0px;
         padding-top: 15px;
         padding-bottom: 15px;
-        font-size: 20px; /* Tamaño más grande */
-        font-weight: 700; /* Negrita fuerte */
+        font-size: 20px; 
+        font-weight: 700; 
         color: #94a3b8;
     }
     .stTabs [aria-selected="true"] {
@@ -59,7 +58,7 @@ paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a
 CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 CSV_URL_MOVIMIENTOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=176641150&single=true&output=csv" 
 
-@st.cache_data(ttl=600) # Cacheo de 10 min, forzado por el botón
+@st.cache_data(ttl=600)
 def load_data():
     df = pd.read_csv(CSV_URL_DOTACION, dtype=str)
     df.columns = [str(c).strip().upper() for c in df.columns]
@@ -101,7 +100,6 @@ def load_data_mov():
             elif 'PUEST' in col: mapeo[col] = 'PUESTO_DESTINO'
 
     df = df.rename(columns=mapeo)
-    
     if 'FECHA_MOV' in df.columns:
         df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
         
@@ -116,7 +114,7 @@ try:
     hoy = datetime.now()
 
     # =====================================================================
-    # 3. ENCABEZADO, REBRANDING Y BOTÓN DE ACTUALIZACIÓN
+    # 3. ENCABEZADO Y BOTÓN GRIS
     # =====================================================================
     col_icon, col_text, col_btn = st.columns([0.5, 9.5, 2])
     with col_icon:
@@ -126,7 +124,7 @@ try:
         st.markdown("<div class='sub-title'>Grupo Cenoa | Panel de Control de Dotación y Rotación</div>", unsafe_allow_html=True)
     with col_btn:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Actualizar Datos", type="primary", use_container_width=True):
+        if st.button("🔄 Actualizar Datos", type="secondary", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
@@ -195,7 +193,6 @@ try:
     if col_nombre: cols_base.insert(1, col_nombre)
     cols_nomina = [c for c in cols_base if c in df_periodo.columns]
     
-    # Motor de interactividad centralizado
     def draw_safe_interactive_chart(fig, unique_key):
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
@@ -214,9 +211,8 @@ try:
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. SEPARACIÓN DEL PANEL EN PESTAÑAS MAESTRAS
+    # 4. PESTAÑAS MAESTRAS
     # =====================================================================
-    st.markdown("<br>", unsafe_allow_html=True)
     tab_dotacion, tab_rotacion = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención"])
 
     # ---------------------------------------------------------------------
@@ -272,17 +268,29 @@ try:
 
         st.divider()
 
-        sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria = None, None, None, None, None
-        if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
-        if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict) and st.session_state.k_loc.get('selection', {}).get('points'): pt = st.session_state.k_loc['selection']['points'][0]; sel_click_localidad = pt.get('label', pt.get('x'))
-        if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict) and st.session_state.k_ant.get('selection', {}).get('points'): sel_click_antiguedad = st.session_state.k_ant['selection']['points'][0].get('x')
-        if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): sel_click_lider = st.session_state.k_lid['selection']['points'][0].get('y')
-        if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('y')
+        # Captura de clics para cross-filtering
+        sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria, sel_click_area = None, None, None, None, None, None
+        
+        if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): 
+            sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
+        if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict) and st.session_state.k_loc.get('selection', {}).get('points'): 
+            pt = st.session_state.k_loc['selection']['points'][0]
+            sel_click_localidad = pt.get('label', pt.get('x'))
+        if 'k_area' in st.session_state and isinstance(st.session_state.k_area, dict) and st.session_state.k_area.get('selection', {}).get('points'): 
+            pt_a = st.session_state.k_area['selection']['points'][0]
+            sel_click_area = pt_a.get('label', pt_a.get('x'))
+        if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict) and st.session_state.k_ant.get('selection', {}).get('points'): 
+            sel_click_antiguedad = st.session_state.k_ant['selection']['points'][0].get('x')
+        if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): 
+            sel_click_lider = st.session_state.k_lid['selection']['points'][0].get('y')
+        if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): 
+            sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('y')
 
         def cross_filter(exclude_chart):
             df_x = df_periodo.copy()
             if exclude_chart != 'emp' and sel_click_empresa: df_x = df_x[df_x['EMPRESA'] == sel_click_empresa]
             if exclude_chart != 'loc' and sel_click_localidad: df_x = df_x[df_x['LOCALIDAD'] == sel_click_localidad]
+            if exclude_chart != 'area' and sel_click_area: df_x = df_x[df_x['AREA'] == sel_click_area]
             if exclude_chart != 'ant' and sel_click_antiguedad: df_x = df_x[df_x['RANGO_ANTIGUEDAD'] == sel_click_antiguedad]
             if exclude_chart != 'lid' and sel_click_lider and col_lider: df_x = df_x[df_x[col_lider] == sel_click_lider]
             if exclude_chart != 'cat' and sel_click_categoria and 'CATEGORIA' in df_x.columns: df_x = df_x[df_x['CATEGORIA'] == sel_click_categoria]
@@ -317,7 +325,8 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        col_x1, col_x2 = st.columns(2)
+        # MEJORA: Tres gráficos simétricos para Empresa, Localidad y Área
+        col_x1, col_x2, col_x3 = st.columns(3)
         with col_x1:
             st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Empresa</h4>", unsafe_allow_html=True)
             df_chart_emp = cross_filter('emp')
@@ -337,9 +346,18 @@ try:
                 fig_loc.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Dotación: %{value} (%{percent})<extra></extra>")
                 fig_loc.update_layout(font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_loc, "k_loc")
-
-        col_x3, col_x4 = st.columns(2)
+                
         with col_x3:
+            st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Distribución por Área</h4>", unsafe_allow_html=True)
+            df_chart_area = cross_filter('area')
+            if not df_chart_area.empty:
+                fig_area = px.pie(df_chart_area, names='AREA', hole=0.4, color_discrete_sequence=paleta_neutra)
+                fig_area.update_traces(textinfo='percent', hovertemplate="<b>%{label}</b><br>Dotación: %{value} (%{percent})<extra></extra>")
+                fig_area.update_layout(font=dict(color="#475569"))
+                draw_safe_interactive_chart(fig_area, "k_area")
+
+        col_x4, col_x5 = st.columns(2)
+        with col_x4:
             st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Distribución por Antigüedad</h4>", unsafe_allow_html=True)
             df_chart_ant = cross_filter('ant')
             if not df_chart_ant.empty:
@@ -350,7 +368,7 @@ try:
                 fig_ant.update_layout(xaxis_title="", yaxis_title="Cantidad", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_ant, "k_ant")
 
-        with col_x4:
+        with col_x5:
             st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top 10 Colaboradores por Líder</h4>", unsafe_allow_html=True)
             if col_lider:
                 df_chart_lid = cross_filter('lid')
@@ -363,21 +381,21 @@ try:
                     draw_safe_interactive_chart(fig_lid, "k_lid")
 
         df_tabla_final = cross_filter('none')
-        filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else "", f"Categoría: {sel_click_categoria}" if sel_click_categoria else ""] if f]
+        filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Área: {sel_click_area}" if sel_click_area else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else "", f"Categoría: {sel_click_categoria}" if sel_click_categoria else ""] if f]
         if filtros_activos:
             st.markdown(f"<div style='background:#f1f5f9; padding:15px; border-radius:8px; border-left: 4px solid #2563eb;'><b>↳ Nómina Interactiva ({len(df_tabla_final)} filtrados):</b> {' | '.join(filtros_activos)}</div><br>", unsafe_allow_html=True)
             st.dataframe(df_tabla_final[cols_nomina].sort_values(by=[c for c in ['EMPRESA', 'AREA', col_nombre] if c in df_tabla_final.columns]), use_container_width=True)
 
         st.divider()
 
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ingresos y Egresos</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
         
         if not df_historia.empty:
             opciones_meses = ["Acumulado del Año (Todos)"] + df_historia['Mes_Esp'].tolist()
             
             col_sel, _ = st.columns([1, 2])
             with col_sel: 
-                mes_drill = st.selectbox("Seleccione un periodo para auditar:", opciones_meses, index=0)
+                mes_drill = st.selectbox("Seleccione un periodo para auditar la rotación:", opciones_meses, index=0)
                 
             if mes_drill == "Acumulado del Año (Todos)":
                 altas_mes = df_filt[(df_filt['FECHA_ING_DT'].dt.year == anio_analisis) & (df_filt['FECHA_ING_DT'].dt.month <= mes_calc)].copy()
@@ -536,7 +554,7 @@ try:
     # TAB 2: ROTACIÓN Y RETENCIÓN
     # ---------------------------------------------------------------------
     with tab_rotacion:
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación (Fórmula: Egresos / Dotación Promedio)</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación y Selección</h3>", unsafe_allow_html=True)
         
         if es_acumulado:
             fecha_inicio_rot = pd.to_datetime(f"{anio_analisis}-01-01")
@@ -565,6 +583,14 @@ try:
             tot_bajas_vol_temp_rot = 0
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
+
+        # MEJORA: KPI de Efectividad de Selección
+        ingresos_periodo = len(df_filt[(df_filt['FECHA_ING_DT'] >= fecha_inicio_rot) & (df_filt['FECHA_ING_DT'] <= fecha_corte)])
+        if not bajas_periodo_rot.empty:
+            bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
+        else:
+            bajas_prueba = 0
+        efectividad_sel = 100 - ((bajas_prueba / ingresos_periodo * 100) if ingresos_periodo > 0 else 0)
         
         df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_rot))])
@@ -582,11 +608,12 @@ try:
         bajas_op = len(bajas_periodo_rot[~bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
         rot_op_pct = (bajas_op / prom_op_calc) * 100
         
-        cr1, cr2, cr3 = st.columns(3)
+        cr1, cr2, cr3, cr_new = st.columns(4)
         cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos")
         cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias", delta_color="inverse")
         cr3.metric("Rot. Voluntaria Temprana", f"{rot_vol_temp_pct:.1f}%", f"{tot_bajas_vol_temp_rot} renuncias < 1 año", delta_color="inverse")
-        
+        cr_new.metric("Efectividad Selección", f"{efectividad_sel:.1f}%", f"{bajas_prueba} bajas en per. de prueba")
+
         st.markdown("<br>", unsafe_allow_html=True)
         cr4, cr5, cr6 = st.columns(3)
         cr4.metric("Dotación Promedio Global", f"{dot_promedio_rot:.1f}", f"Inicial: {dot_inicial_rot} | Final: {dot_final_rot}", delta_color="off")
@@ -595,7 +622,6 @@ try:
         
         st.divider()
         
-        # --- EVOLUCIÓN HISTÓRICA DE ROTACIÓN (CON ETIQUETAS DE TEXTO) ---
         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Rotación</h4>", unsafe_allow_html=True)
         if not df_historia.empty:
             tasas_rotacion_hist = []
@@ -632,7 +658,6 @@ try:
             
             tab_rot_tot, tab_rot_vol, tab_rot_temp = st.tabs(["Rotación Total", "Rotación Voluntaria", "Rotación Temprana (< 1 año)"])
             
-            # Agregado el parámetro text y el formato de visualización a las 3 gráficas
             with tab_rot_tot:
                 fig_rt = px.line(df_hist_rot, x='Fecha', y='TASA_TOTAL', markers=True, text='TASA_TOTAL')
                 fig_rt.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', marker=dict(size=7, color="#b91c1c"), line=dict(color="#ef4444", width=2), hovertemplate="<b>%{y:.1f}% Rotación Total</b><extra></extra>")
@@ -660,12 +685,14 @@ try:
         st.markdown("<br>", unsafe_allow_html=True)
         
         sel_rot_tipo = None
-        if 'k_rot_tipo' in st.session_state and isinstance(st.session_state.k_rot_tipo, dict) and st.session_state.k_rot_tipo.get('selection', {}).get('points'):
-            sel_rot_tipo = st.session_state.k_rot_tipo['selection']['points'][0].get('label')
-
+        if 'k_rot_tipo' in st.session_state and isinstance(st.session_state.k_rot_tipo, dict):
+            points = st.session_state.k_rot_tipo.get('selection', {}).get('points', [])
+            if points: sel_rot_tipo = points[0].get('label')
+            
         sel_rot_area = None
-        if 'k_rot_area' in st.session_state and isinstance(st.session_state.k_rot_area, dict) and st.session_state.k_rot_area.get('selection', {}).get('points'):
-            sel_rot_area = st.session_state.k_rot_area['selection']['points'][0].get('y')
+        if 'k_rot_area' in st.session_state and isinstance(st.session_state.k_rot_area, dict):
+            points = st.session_state.k_rot_area.get('selection', {}).get('points', [])
+            if points: sel_rot_area = points[0].get('y')
 
         col_r1, col_r2 = st.columns(2)
         
