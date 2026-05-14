@@ -28,7 +28,6 @@ st.markdown("""
     hr { border-color: #e2e8f0; }
     .stExpander { background-color: #ffffff; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; }
     
-    /* MEJORA: Diseño destacado de las pestañas superiores */
     .stTabs [data-baseweb="tab-list"] {
         gap: 30px;
         border-bottom: 2px solid #e2e8f0;
@@ -40,8 +39,8 @@ st.markdown("""
         border-radius: 4px 4px 0px 0px;
         padding-top: 15px;
         padding-bottom: 15px;
-        font-size: 20px; /* Tamaño más grande */
-        font-weight: 700; /* Negrita fuerte */
+        font-size: 20px; 
+        font-weight: 700; 
         color: #94a3b8;
     }
     .stTabs [aria-selected="true"] {
@@ -59,7 +58,7 @@ paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a
 CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 CSV_URL_MOVIMIENTOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=176641150&single=true&output=csv" 
 
-@st.cache_data(ttl=600) # Cacheo de 10 min, forzado por el botón
+@st.cache_data(ttl=600)
 def load_data():
     df = pd.read_csv(CSV_URL_DOTACION, dtype=str)
     df.columns = [str(c).strip().upper() for c in df.columns]
@@ -101,14 +100,8 @@ def load_data_mov():
             elif 'PUEST' in col: mapeo[col] = 'PUESTO_DESTINO'
 
     df = df.rename(columns=mapeo)
-    
     if 'FECHA_MOV' in df.columns:
         df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
-        
-    cols_txt = ['EMP_ORIGEN', 'LOC_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'LOC_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'TIPO_MOV', 'POTENCIAL']
-    for c in cols_txt:
-        if c in df.columns:
-            df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], 'NO DECLARADO')
     return df
 
 try:
@@ -116,7 +109,7 @@ try:
     hoy = datetime.now()
 
     # =====================================================================
-    # 3. ENCABEZADO, REBRANDING Y BOTÓN DE ACTUALIZACIÓN
+    # 3. ENCABEZADO Y BOTÓN GRIS
     # =====================================================================
     col_icon, col_text, col_btn = st.columns([0.5, 9.5, 2])
     with col_icon:
@@ -195,12 +188,10 @@ try:
     if col_nombre: cols_base.insert(1, col_nombre)
     cols_nomina = [c for c in cols_base if c in df_periodo.columns]
     
-    # Motor de interactividad centralizado
     def draw_safe_interactive_chart(fig, unique_key):
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
-    # Pre-cálculos compartidos de Historia
     if es_acumulado:
         fecha_inicio_historia = pd.to_datetime('2025-01-01')
     else:
@@ -214,9 +205,8 @@ try:
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. SEPARACIÓN DEL PANEL EN PESTAÑAS MAESTRAS
+    # 4. PESTAÑAS MAESTRAS
     # =====================================================================
-    st.markdown("<br>", unsafe_allow_html=True)
     tab_dotacion, tab_rotacion = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención"])
 
     # ---------------------------------------------------------------------
@@ -273,12 +263,21 @@ try:
         st.divider()
 
         sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria, sel_click_area = None, None, None, None, None, None
-        if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
-        if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict) and st.session_state.k_loc.get('selection', {}).get('points'): pt = st.session_state.k_loc['selection']['points'][0]; sel_click_localidad = pt.get('label', pt.get('x'))
-        if 'k_area' in st.session_state and isinstance(st.session_state.k_area, dict) and st.session_state.k_area.get('selection', {}).get('points'): pt_a = st.session_state.k_area['selection']['points'][0]; sel_click_area = pt_a.get('label', pt_a.get('x'))
-        if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict) and st.session_state.k_ant.get('selection', {}).get('points'): sel_click_antiguedad = st.session_state.k_ant['selection']['points'][0].get('x')
-        if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): sel_click_lider = st.session_state.k_lid['selection']['points'][0].get('y')
-        if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('y')
+        
+        if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): 
+            sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
+        if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict) and st.session_state.k_loc.get('selection', {}).get('points'): 
+            pt = st.session_state.k_loc['selection']['points'][0]
+            sel_click_localidad = pt.get('label', pt.get('x'))
+        if 'k_area' in st.session_state and isinstance(st.session_state.k_area, dict) and st.session_state.k_area.get('selection', {}).get('points'): 
+            pt_a = st.session_state.k_area['selection']['points'][0]
+            sel_click_area = pt_a.get('label', pt_a.get('x'))
+        if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict) and st.session_state.k_ant.get('selection', {}).get('points'): 
+            sel_click_antiguedad = st.session_state.k_ant['selection']['points'][0].get('x')
+        if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): 
+            sel_click_lider = st.session_state.k_lid['selection']['points'][0].get('y')
+        if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): 
+            sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('y')
 
         def cross_filter(exclude_chart):
             df_x = df_periodo.copy()
@@ -578,7 +577,7 @@ try:
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
 
         # =====================================================================
-        # MEJORA: KPI EFECTIVIDAD SELECCIÓN GLOBAL (Cálculo Correcto y Color)
+        # KPI EFECTIVIDAD SELECCIÓN GLOBAL (Cálculo Correcto y Color)
         # =====================================================================
         if not bajas_periodo_rot.empty:
             bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
@@ -590,7 +589,7 @@ try:
         efectividad_sel = 100 - ((bajas_prueba / poblacion_en_prueba * 100) if poblacion_en_prueba > 0 else 0)
 
         # =====================================================================
-        # MEJORA: KPI EFECTIVIDAD SELECCIÓN COMERCIAL (Nuevo)
+        # KPI EFECTIVIDAD SELECCIÓN COMERCIAL
         # =====================================================================
         if not bajas_periodo_rot.empty:
             bajas_prueba_com = len(bajas_periodo_rot[(bajas_periodo_rot['AREA'] == 'COMERCIAL') & ((bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180)])
@@ -600,6 +599,25 @@ try:
         sobrevivientes_prueba_com = len(df_periodo[((fecha_corte - df_periodo['FECHA_ING_DT']).dt.days <= 180) & (df_periodo['AREA'] == 'COMERCIAL')])
         poblacion_en_prueba_com = sobrevivientes_prueba_com + bajas_prueba_com
         efectividad_sel_com = 100 - ((bajas_prueba_com / poblacion_en_prueba_com * 100) if poblacion_en_prueba_com > 0 else 0)
+
+        # =====================================================================
+        # CÁLCULOS DE STAFF Y OPERACIÓN (Restaurados)
+        # =====================================================================
+        df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
+        dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_rot))])
+        dot_fin_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_corte) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] > fecha_corte))])
+        prom_staff = (dot_ini_staff + dot_fin_staff) / 2
+        prom_staff_calc = prom_staff if prom_staff > 0 else 1
+        bajas_staff = len(bajas_periodo_rot[bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
+        rot_staff_pct = (bajas_staff / prom_staff_calc) * 100
+        
+        df_op = df_filt[~df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
+        dot_ini_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] >= fecha_inicio_rot))])
+        dot_fin_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_corte) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] > fecha_corte))])
+        prom_op = (dot_ini_op + dot_fin_op) / 2
+        prom_op_calc = prom_op if prom_op > 0 else 1
+        bajas_op = len(bajas_periodo_rot[~bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
+        rot_op_pct = (bajas_op / prom_op_calc) * 100
 
         # RENDER 5 COLUMNAS
         cr1, cr2, cr3, cr_new, cr_com = st.columns(5)
