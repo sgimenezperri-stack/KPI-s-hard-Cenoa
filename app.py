@@ -732,11 +732,21 @@ try:
                 st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para filtrar esta tabla y auditar detalles específicos.</p>", unsafe_allow_html=True)
 
             if not df_show_rot.empty:
-                # CÁLCULO DE ANTIGÜEDAD AGREGADO AQUÍ
-                df_show_rot['ANTIGÜEDAD (AÑOS)'] = ((df_show_rot['FECHA_EGR_DT'] - df_show_rot['FECHA_ING_DT']).dt.days / 365.25).round(1)
+                # MEJORA: CÁLCULO DE ANTIGÜEDAD EN AÑOS Y MESES FORMATO TEXTO
+                def formatear_antiguedad(dias):
+                    if pd.isna(dias) or dias < 0: return "Desconocida"
+                    anios = int(dias // 365.25)
+                    meses = int((dias % 365.25) // 30.416)
+                    res = []
+                    if anios > 0: res.append(f"{anios} año{'s' if anios > 1 else ''}")
+                    if meses > 0: res.append(f"{meses} mes{'es' if meses > 1 else ''}")
+                    if not res: return "Menos de 1 mes"
+                    return " y ".join(res)
+                
+                df_show_rot['ANTIGÜEDAD'] = (df_show_rot['FECHA_EGR_DT'] - df_show_rot['FECHA_ING_DT']).dt.days.apply(formatear_antiguedad)
                 df_show_rot['FECHA_EGR_STR'] = df_show_rot['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
                 
-                cols_rot_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'ANTIGÜEDAD (AÑOS)', 'FECHA_EGR_STR', 'MOTIVO DE EGRESO'] if c in df_show_rot.columns]
+                cols_rot_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'ANTIGÜEDAD', 'FECHA_EGR_STR', 'MOTIVO DE EGRESO'] if c in df_show_rot.columns]
                 st.dataframe(df_show_rot[cols_rot_show].rename(columns={'FECHA_EGR_STR': 'FECHA EGRESO'}), use_container_width=True)
             else:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
