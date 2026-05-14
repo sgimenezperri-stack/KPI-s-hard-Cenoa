@@ -129,15 +129,21 @@ try:
     
     with f4: anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
     
-    # MEJORA: Cambio a MULTISELECT para meses en el Filtro Global
+    # =====================================================================
+    # MEJORA: LÓGICA DE MESES DINÁMICA SEGÚN EL AÑO ACTUAL
+    # =====================================================================
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
-        opciones_meses = list(range(1, 13))
-        default_meses = list(range(1, hoy.month + 1)) if anio_analisis == hoy.year else opciones_meses
         
-        meses_sel = st.multiselect("MESES", opciones_meses, default=default_meses, format_func=lambda x: meses_nombres[x])
+        # Restringe los meses al mes actual si se selecciona el año corriente
+        if anio_analisis == hoy.year:
+            opciones_meses = list(range(1, hoy.month + 1))
+        else:
+            opciones_meses = list(range(1, 13))
+            
+        meses_sel = st.multiselect("MESES", opciones_meses, default=opciones_meses, format_func=lambda x: meses_nombres[x])
         if not meses_sel:
-            meses_sel = default_meses
+            meses_sel = opciones_meses
             st.warning("Debe seleccionar al menos un mes.")
             
     mes_fin = max(meses_sel)
@@ -183,7 +189,6 @@ try:
                 sel_lider = st.multiselect("LÍDER", get_opts(col_lider, df_filt), placeholder="Todos")
                 if sel_lider: df_filt = df_filt[df_filt[col_lider].isin(sel_lider)]
 
-    # El snapshot se toma siempre al final del periodo (mes_fin)
     df_periodo = df_filt[(df_filt['FECHA_ING_DT'] <= fecha_corte) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_corte))].copy()
     dot_actual = len(df_periodo)
 
@@ -198,7 +203,6 @@ try:
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
-    # Pre-cálculos compartidos de Historia (El gráfico muestra desde el mes 1 si hay más de 1 mes, o rolling 12)
     if len(meses_sel) > 1:
         fecha_inicio_historia = pd.to_datetime(f"{anio_analisis}-01-01")
     else:
@@ -387,8 +391,7 @@ try:
 
         st.divider()
 
-        # MEJORA: Filtro Multi-Selección en Ingresos y Egresos
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ingresos y Egresos</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
         
         if not df_historia.empty:
             opciones_drill = df_historia['Mes_Esp'].tolist()
@@ -468,7 +471,6 @@ try:
             df_mov = load_data_mov()
             
             if 'FECHA_MOV_DT' in df_mov.columns:
-                # MEJORA: Filtro por todos los meses seleccionados
                 df_mov_periodo = df_mov[
                     (df_mov['FECHA_MOV_DT'].dt.year == anio_analisis) & 
                     (df_mov['FECHA_MOV_DT'].dt.month.isin(meses_sel))
@@ -566,7 +568,6 @@ try:
         dot_promedio_rot = (dot_inicial_rot + dot_final_rot) / 2
         dot_promedio_calc = dot_promedio_rot if dot_promedio_rot > 0 else 1
         
-        # Filtro estricto por el rango y meses seleccionados
         bajas_periodo_rot = df_filt[
             (df_filt['FECHA_EGR_DT'] >= fecha_inicio_periodo) & 
             (df_filt['FECHA_EGR_DT'] <= fecha_corte) &
@@ -593,12 +594,6 @@ try:
         # =====================================================================
         # KPI EFECTIVIDAD SELECCIÓN GLOBAL
         # =====================================================================
-        ingresos_globales = df_filt[
-            (df_filt['FECHA_ING_DT'] >= fecha_inicio_periodo) & 
-            (df_filt['FECHA_ING_DT'] <= fecha_corte) &
-            (df_filt['FECHA_ING_DT'].dt.month.isin(meses_sel))
-        ]
-        
         if not bajas_periodo_rot.empty:
             bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
         else:
