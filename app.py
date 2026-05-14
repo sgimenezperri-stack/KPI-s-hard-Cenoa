@@ -102,11 +102,6 @@ def load_data_mov():
     df = df.rename(columns=mapeo)
     if 'FECHA_MOV' in df.columns:
         df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
-        
-    cols_txt = ['EMP_ORIGEN', 'LOC_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'LOC_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'TIPO_MOV', 'POTENCIAL']
-    for c in cols_txt:
-        if c in df.columns:
-            df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], 'NO DECLARADO')
     return df
 
 try:
@@ -197,7 +192,6 @@ try:
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
-    # Pre-cálculos compartidos de Historia
     if es_acumulado:
         fecha_inicio_historia = pd.to_datetime('2025-01-01')
     else:
@@ -325,7 +319,6 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # MEJORA: Tres gráficos simétricos para Empresa, Localidad y Área
         col_x1, col_x2, col_x3 = st.columns(3)
         with col_x1:
             st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Empresa</h4>", unsafe_allow_html=True)
@@ -584,7 +577,7 @@ try:
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
 
-        # MEJORA: KPI de Efectividad de Selección
+        # KPI de Efectividad de Selección
         ingresos_periodo = len(df_filt[(df_filt['FECHA_ING_DT'] >= fecha_inicio_rot) & (df_filt['FECHA_ING_DT'] <= fecha_corte)])
         if not bajas_periodo_rot.empty:
             bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
@@ -739,8 +732,11 @@ try:
                 st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para filtrar esta tabla y auditar detalles específicos.</p>", unsafe_allow_html=True)
 
             if not df_show_rot.empty:
+                # CÁLCULO DE ANTIGÜEDAD AGREGADO AQUÍ
+                df_show_rot['ANTIGÜEDAD (AÑOS)'] = ((df_show_rot['FECHA_EGR_DT'] - df_show_rot['FECHA_ING_DT']).dt.days / 365.25).round(1)
                 df_show_rot['FECHA_EGR_STR'] = df_show_rot['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
-                cols_rot_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'FECHA_EGR_STR', 'MOTIVO DE EGRESO'] if c in df_show_rot.columns]
+                
+                cols_rot_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'ANTIGÜEDAD (AÑOS)', 'FECHA_EGR_STR', 'MOTIVO DE EGRESO'] if c in df_show_rot.columns]
                 st.dataframe(df_show_rot[cols_rot_show].rename(columns={'FECHA_EGR_STR': 'FECHA EGRESO'}), use_container_width=True)
             else:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
