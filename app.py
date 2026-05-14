@@ -262,7 +262,6 @@ try:
 
         st.divider()
 
-        # Captura de clics para cross-filtering
         sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria, sel_click_area = None, None, None, None, None, None
         
         if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): 
@@ -577,13 +576,22 @@ try:
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
 
-        # KPI de Efectividad de Selección
-        ingresos_periodo = len(df_filt[(df_filt['FECHA_ING_DT'] >= fecha_inicio_rot) & (df_filt['FECHA_ING_DT'] <= fecha_corte)])
+        # =====================================================================
+        # MEJORA MATEMÁTICA: KPI de Efectividad de Selección
+        # =====================================================================
         if not bajas_periodo_rot.empty:
             bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
         else:
             bajas_prueba = 0
-        efectividad_sel = 100 - ((bajas_prueba / ingresos_periodo * 100) if ingresos_periodo > 0 else 0)
+            
+        # Calculamos los sobrevivientes: personas que al finalizar el mes aún están activos y tienen <= 180 días
+        sobrevivientes_prueba = len(df_periodo[(fecha_corte - df_periodo['FECHA_ING_DT']).dt.days <= 180])
+        
+        # La población real en riesgo de fallar la prueba este mes:
+        poblacion_en_prueba = sobrevivientes_prueba + bajas_prueba
+        
+        efectividad_sel = 100 - ((bajas_prueba / poblacion_en_prueba * 100) if poblacion_en_prueba > 0 else 0)
+        # =====================================================================
         
         df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_rot) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_rot))])
@@ -605,7 +613,7 @@ try:
         cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos")
         cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias", delta_color="inverse")
         cr3.metric("Rot. Voluntaria Temprana", f"{rot_vol_temp_pct:.1f}%", f"{tot_bajas_vol_temp_rot} renuncias < 1 año", delta_color="inverse")
-        cr_new.metric("Efectividad Selección", f"{efectividad_sel:.1f}%", f"{bajas_prueba} bajas en per. de prueba")
+        cr_new.metric("Efectividad Selección", f"{efectividad_sel:.1f}%", f"{bajas_prueba} bajas de {poblacion_en_prueba} en prueba")
 
         st.markdown("<br>", unsafe_allow_html=True)
         cr4, cr5, cr6 = st.columns(3)
@@ -732,7 +740,6 @@ try:
                 st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para filtrar esta tabla y auditar detalles específicos.</p>", unsafe_allow_html=True)
 
             if not df_show_rot.empty:
-                # MEJORA: CÁLCULO DE ANTIGÜEDAD EN AÑOS Y MESES FORMATO TEXTO
                 def formatear_antiguedad(dias):
                     if pd.isna(dias) or dias < 0: return "Desconocida"
                     anios = int(dias // 365.25)
