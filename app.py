@@ -240,7 +240,7 @@ try:
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_nombres) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. PESTAÑAS PRINCIPALES
+    # 4. PESTAÑAS MAESTRAS
     # =====================================================================
     tab_dotacion, tab_rotacion, tab_ausentismo = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención", "⚕️ Análisis de Ausentismo"])
 
@@ -845,7 +845,7 @@ try:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
 
     # ---------------------------------------------------------------------
-    # TAB 3: AUSENTISMO Y NOVEDADES (Con interactividad cruzada)
+    # TAB 3: AUSENTISMO Y NOVEDADES (FÓRMULA EXACTA Y DINÁMICA)
     # ---------------------------------------------------------------------
     with tab_ausentismo:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ausentismo y Novedades</h3>", unsafe_allow_html=True)
@@ -853,13 +853,13 @@ try:
             df_aus_raw = load_data_aus()
             
             if not df_aus_raw.empty and 'FECHA_AUS_DT' in df_aus_raw.columns:
-                # Filtrar por año y meses globales del panel
+                # 1. Filtro Global (Mes y Año)
                 df_aus_kpi = df_aus_raw[
                     (df_aus_raw['FECHA_AUS_DT'].dt.year == anio_analisis) & 
                     (df_aus_raw['FECHA_AUS_DT'].dt.month.isin(meses_sel))
                 ].copy()
                 
-                # APLICAR LOS FILTROS GLOBALES (Empresa, Localidad, Área)
+                # 2. Filtro Global (Empresa, Localidad, Área desde el header)
                 if sel_emp and 'EMPRESA' in df_aus_kpi.columns:
                     df_aus_kpi = df_aus_kpi[df_aus_kpi['EMPRESA'].isin(sel_emp)]
                 if sel_loc and 'LOCALIDAD' in df_aus_kpi.columns:
@@ -868,7 +868,7 @@ try:
                     df_aus_kpi = df_aus_kpi[df_aus_kpi['AREA'].isin(sel_area)]
                 
                 if not df_aus_kpi.empty:
-                    # MANEJO DE CLICS (INTERACTIVIDAD CRUZADA DE AUSENTISMO)
+                    # 3. INTERACTIVIDAD CRUZADA (Clics en los gráficos de Ausentismo)
                     sel_aus_lic, sel_aus_emp, sel_aus_area = None, None, None
                     
                     if 'k_aus_lic' in st.session_state and isinstance(st.session_state.k_aus_lic, dict) and st.session_state.k_aus_lic.get('selection', {}).get('points'): 
@@ -888,22 +888,58 @@ try:
                             df_x = df_x[df_x['AREA'] == sel_aus_area]
                         return df_x
 
-                    # Para las métricas y la tabla general, usamos la data con todos los clics aplicados
                     df_aus_filtered = cross_filter_aus('none')
 
-                    # KPIs principales (Reaccionan a los clics)
+                    # ---------------------------------------------------------
+                    # KPI GIGANTE: FÓRMULA DE TASA DE AUSENTISMO
+                    # ---------------------------------------------------------
+                    # A. Denominador (Días Teóricos) ajustado dinámicamente si haces clic en una Empresa o Área
+                    df_filt_kpi = df_filt.copy()
+                    if sel_aus_emp: df_filt_kpi = df_filt_kpi[df_filt_kpi['EMPRESA'] == sel_aus_emp]
+                    if sel_aus_area: df_filt_kpi = df_filt_kpi[df_filt_kpi['AREA'] == sel_aus_area]
+                    
+                    dot_ini_aus = len(df_filt_kpi[(df_filt_kpi['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_filt_kpi['FECHA_EGR_DT'].isna()) | (df_filt_kpi['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
+                    dot_fin_aus = len(df_filt_kpi[(df_filt_kpi['FECHA_ING_DT'] <= fecha_corte) & ((df_filt_kpi['FECHA_EGR_DT'].isna()) | (df_filt_kpi['FECHA_EGR_DT'] > fecha_corte))])
+                    dot_prom_aus = (dot_ini_aus + dot_fin_aus) / 2 if (dot_ini_aus + dot_fin_aus) > 0 else 1
+                    
+                    dias_periodo_aus = (fecha_corte - fecha_inicio_periodo).days + 1
+                    dias_teoricos = dot_prom_aus * dias_periodo_aus
+
+                    # B. Numerador (Días Perdidos)
                     total_dias = df_aus_filtered['DIAS_AUS'].sum() if 'DIAS_AUS' in df_aus_filtered.columns else 0
                     total_casos = len(df_aus_filtered)
                     colabs_ausentes = df_aus_filtered['NOMBRE_AUS'].nunique() if 'NOMBRE_AUS' in df_aus_filtered.columns else 0
                     
-                    ca1, ca2, ca3 = st.columns(3)
-                    ca1.metric("Días Totales Perdidos", f"{int(total_dias)}")
-                    ca2.metric("Total de Novedades (Casos)", f"{total_casos}")
-                    ca3.metric("Colaboradores con Ausencias", f"{colabs_ausentes}")
+                    # C. Tasa Final y Lógica de Colores
+                    tasa_ausentismo = (total_dias / dias_teoricos) * 100 if dias_teoricos > 0 else 0
+                    
+                    if tasa_ausentismo <= 3.0:
+                        c_color, bg_color = "#15803d", "#f0fdf4" # Verde (Saludable)
+                    elif tasa_ausentismo <= 5.0:
+                        c_color, bg_color = "#b45309", "#fffbeb" # Naranja (Precaución)
+                    else:
+                        c_color, bg_color = "#dc2626", "#fef2f2" # Rojo (Alerta)
+                        
+                    html_kpi_aus = f"""
+                    <div style='background-color: {bg_color}; border: 1px solid {c_color}; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 100%; min-height: 115px; display: flex; flex-direction: column; justify-content: center;'>
+                        <div style='color: #64748b; font-weight: 600; font-size: 13px; padding-bottom: 4px;'>Tasa de Ausentismo Real</div>
+                        <div style='color: {c_color}; font-weight: 700; font-size: 28px; line-height: 1.1;'>{tasa_ausentismo:.1f}%</div>
+                        <div style='color: {c_color}; font-size: 12px; font-weight: 500; padding-top: 4px;'>Días Perdidos: {int(total_dias)} | Días Teóricos: {int(dias_teoricos)}</div>
+                    </div>
+                    """
+                    
+                    c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns([2, 1, 1, 1])
+                    with c_kpi1:
+                        st.markdown(html_kpi_aus, unsafe_allow_html=True)
+                    c_kpi2.metric("Días Tot. Perdidos", f"{int(total_dias)}")
+                    c_kpi3.metric("Total de Casos", f"{total_casos}")
+                    c_kpi4.metric("Colab. con Novedades", f"{colabs_ausentes}")
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # Gráficos de Ausentismo
+                    # ---------------------------------------------------------
+                    # GRÁFICOS INTERACTIVOS DE AUSENTISMO
+                    # ---------------------------------------------------------
                     c_aus1, c_aus2, c_aus3 = st.columns(3)
                     
                     with c_aus1:
@@ -949,7 +985,7 @@ try:
                     if filtros_aus_activos:
                         st.markdown(f"<div style='background:#f1f5f9; padding:15px; border-radius:8px; border-left: 4px solid #2563eb; margin-bottom:15px;'><b>↳ Filtros Activos Ausentismo ({len(df_aus_filtered)} resultados):</b> {' | '.join(filtros_aus_activos)}</div>", unsafe_allow_html=True)
                     else:
-                        st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para filtrar los datos de la curva y la tabla inferior.</p>", unsafe_allow_html=True)
+                        st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para recalcular la Tasa de Ausentismo y filtrar la tabla inferior.</p>", unsafe_allow_html=True)
                         
                     st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Días Perdidos</h4>", unsafe_allow_html=True)
                     
