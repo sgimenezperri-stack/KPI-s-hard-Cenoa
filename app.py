@@ -57,6 +57,7 @@ paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a
 # =====================================================================
 CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 CSV_URL_MOVIMIENTOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=176641150&single=true&output=csv" 
+CSV_URL_AUSENTISMO = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=966031933&single=true&output=csv"
 
 @st.cache_data(ttl=600)
 def load_data():
@@ -104,6 +105,47 @@ def load_data_mov():
         df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
     return df
 
+@st.cache_data(ttl=600)
+def load_data_ausentismo():
+    try:
+        df = pd.read_csv(CSV_URL_AUSENTISMO, dtype=str)
+        df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
+        
+        mapeo = {}
+        for col in df.columns:
+            if 'FECHA' in col and ('INICIO' in col or 'AUS' in col): mapeo[col] = 'FECHA_AUSENTISMO'
+            elif 'MOTIVO' in col or 'TIPO' in col or 'RAZON' in col: mapeo[col] = 'MOTIVO_AUSENCIA'
+            elif 'DIAS' in col or 'DÍAS' in col or 'CANTIDAD' in col: mapeo[col] = 'DIAS_AUSENCIA'
+            elif 'NOMBRE' in col or 'COLAB' in col or 'APELLIDO' in col: mapeo[col] = 'NOMBRE'
+            elif 'EMP' in col: mapeo[col] = 'EMPRESA'
+            elif 'LOC' in col: mapeo[col] = 'LOCALIDAD'
+            elif 'AREA' in col or 'ÁREA' in col: mapeo[col] = 'AREA'
+            elif 'PUEST' in col: mapeo[col] = 'PUESTO'
+
+        df = df.rename(columns=mapeo)
+        
+        if 'FECHA_AUSENTISMO' not in df.columns:
+            for col in df.columns:
+                if 'FECHA' in col:
+                    df = df.rename(columns={col: 'FECHA_AUSENTISMO'})
+                    break
+
+        if 'FECHA_AUSENTISMO' in df.columns:
+            df['FECHA_AUS_DT'] = pd.to_datetime(df['FECHA_AUSENTISMO'], dayfirst=True, errors='coerce')
+            
+        if 'DIAS_AUSENCIA' in df.columns:
+            df['DIAS_AUSENCIA'] = pd.to_numeric(df['DIAS_AUSENCIA'].str.replace(',','.'), errors='coerce').fillna(1)
+        else:
+            df['DIAS_AUSENCIA'] = 1 
+            
+        cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'MOTIVO_AUSENCIA']
+        for c in cols_txt:
+            if c in df.columns:
+                df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], 'NO DECLARADO')
+        return df
+    except Exception:
+        return pd.DataFrame()
+
 try:
     df_raw = load_data()
     hoy = datetime.now()
@@ -128,18 +170,10 @@ try:
     df_filt = df_raw.copy()
     
     with f4: anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
-    
-    # =====================================================================
-    # MEJORA: LÓGICA DE MESES DINÁMICA SEGÚN EL AÑO ACTUAL
-    # =====================================================================
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
-        
-        # Restringe los meses al mes actual si se selecciona el año corriente
-        if anio_analisis == hoy.year:
-            opciones_meses = list(range(1, hoy.month + 1))
-        else:
-            opciones_meses = list(range(1, 13))
+        if anio_analisis == hoy.year: opciones_meses = list(range(1, hoy.month + 1))
+        else: opciones_meses = list(range(1, 13))
             
         meses_sel = st.multiselect("MESES", opciones_meses, default=opciones_meses, format_func=lambda x: meses_nombres[x])
         if not meses_sel:
@@ -216,9 +250,10 @@ try:
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. PESTAÑAS MAESTRAS
+    # 4. PESTAÑAS MAESTRAS (AHORA SON 3)
     # =====================================================================
-    tab_dotacion, tab_rotacion = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención"])
+    st.markdown("<br>", unsafe_allow_html=True)
+    tab_dotacion, tab_rotacion, tab_ausentismo = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención", "🤒 Análisis de Ausentismo"])
 
     # ---------------------------------------------------------------------
     # TAB 1: DOTACIÓN Y ESTRUCTURA
@@ -591,9 +626,12 @@ try:
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
 
-        # =====================================================================
-        # KPI EFECTIVIDAD SELECCIÓN GLOBAL
-        # =====================================================================
+        ingresos_globales = df_filt[
+            (df_filt['FECHA_ING_DT'] >= fecha_inicio_periodo) & 
+            (df_filt['FECHA_ING_DT'] <= fecha_corte) &
+            (df_filt['FECHA_ING_DT'].dt.month.isin(meses_sel))
+        ]
+        
         if not bajas_periodo_rot.empty:
             bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
         else:
@@ -603,9 +641,6 @@ try:
         poblacion_en_prueba = sobrevivientes_prueba + bajas_prueba
         efectividad_sel = 100 - ((bajas_prueba / poblacion_en_prueba * 100) if poblacion_en_prueba > 0 else 0)
 
-        # =====================================================================
-        # KPI EFECTIVIDAD SELECCIÓN COMERCIAL
-        # =====================================================================
         if not bajas_periodo_rot.empty:
             bajas_prueba_com = len(bajas_periodo_rot[(bajas_periodo_rot['AREA'] == 'COMERCIAL') & ((bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180)])
         else:
@@ -615,9 +650,6 @@ try:
         poblacion_en_prueba_com = sobrevivientes_prueba_com + bajas_prueba_com
         efectividad_sel_com = 100 - ((bajas_prueba_com / poblacion_en_prueba_com * 100) if poblacion_en_prueba_com > 0 else 0)
 
-        # =====================================================================
-        # CÁLCULOS DE STAFF Y OPERACIÓN
-        # =====================================================================
         df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
         dot_fin_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_corte) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] > fecha_corte))])
@@ -634,7 +666,6 @@ try:
         bajas_op = len(bajas_periodo_rot[~bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
         rot_op_pct = (bajas_op / prom_op_calc) * 100
 
-        # RENDER 5 COLUMNAS
         cr1, cr2, cr3, cr_new, cr_com = st.columns(5)
         
         cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos")
@@ -800,6 +831,105 @@ try:
                 st.dataframe(df_show_rot[cols_rot_show].rename(columns={'FECHA_EGR_STR': 'FECHA EGRESO'}), use_container_width=True)
             else:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
+
+    # ---------------------------------------------------------------------
+    # TAB 3: AUSENTISMO (NUEVO)
+    # ---------------------------------------------------------------------
+    with tab_ausentismo:
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Ausentismo</h3>", unsafe_allow_html=True)
+        try:
+            df_aus = load_data_ausentismo()
+            if not df_aus.empty and 'FECHA_AUS_DT' in df_aus.columns:
+                
+                # Filtrar Ausentismo por el periodo seleccionado
+                df_aus_periodo = df_aus[
+                    (df_aus['FECHA_AUS_DT'].dt.year == anio_analisis) & 
+                    (df_aus['FECHA_AUS_DT'].dt.month.isin(meses_sel))
+                ].copy()
+                
+                # Aplicar los filtros globales al ausentismo (Empresa, Sede, Area)
+                if sel_emp and 'EMPRESA' in df_aus_periodo.columns:
+                    df_aus_periodo = df_aus_periodo[df_aus_periodo['EMPRESA'].isin(sel_emp)]
+                if sel_loc and 'LOCALIDAD' in df_aus_periodo.columns:
+                    df_aus_periodo = df_aus_periodo[df_aus_periodo['LOCALIDAD'].isin(sel_loc)]
+                if sel_area and 'AREA' in df_aus_periodo.columns:
+                    df_aus_periodo = df_aus_periodo[df_aus_periodo['AREA'].isin(sel_area)]
+                
+                total_ausencias = len(df_aus_periodo)
+                total_dias_ausentes = df_aus_periodo['DIAS_AUSENCIA'].sum() if 'DIAS_AUSENCIA' in df_aus_periodo.columns else total_ausencias
+                
+                # Cálculo de Índice (Asumiendo 22 días laborables por mes por la dotación promedio)
+                meses_contados = len(meses_sel)
+                dot_promedio_aus = ((len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_periodo))]) + dot_actual) / 2) if dot_actual > 0 else 1
+                dias_teoricos_trabajados = dot_promedio_aus * 22 * meses_contados
+                
+                indice_ausentismo = (total_dias_ausentes / dias_teoricos_trabajados * 100) if dias_teoricos_trabajados > 0 else 0
+                
+                ca1, ca2, ca3, ca4 = st.columns(4)
+                ca1.metric("Índice Ausentismo Estimado", f"{indice_ausentismo:.1f}%", f"{total_dias_ausentes:.1f} días perdidos", delta_color="inverse")
+                ca2.metric("Total Eventos Registrados", total_ausencias, f"En {meses_contados} mes(es) sel.", delta_color="off")
+                
+                if 'MOTIVO_AUSENCIA' in df_aus_periodo.columns and not df_aus_periodo.empty:
+                    top_mot = df_aus_periodo['MOTIVO_AUSENCIA'].value_counts()
+                    ca3.metric("Motivo Principal", str(top_mot.index[0]), f"{top_mot.iloc[0]} casos", delta_color="off")
+                else:
+                    ca3.metric("Motivo Principal", "N/A")
+                    
+                if 'NOMBRE' in df_aus_periodo.columns and not df_aus_periodo.empty:
+                    top_colab = df_aus_periodo.groupby('NOMBRE')['DIAS_AUSENCIA'].sum().sort_values(ascending=False)
+                    if not top_colab.empty:
+                        ca4.metric("Mayor Ausentismo (Colab.)", str(top_colab.index[0]), f"{top_colab.iloc[0]:.1f} días", delta_color="inverse")
+                    else:
+                        ca4.metric("Mayor Ausentismo (Colab.)", "N/A")
+                else:
+                    ca4.metric("Mayor Ausentismo (Colab.)", "N/A")
+                    
+                st.divider()
+                
+                col_a1, col_a2 = st.columns(2)
+                with col_a1:
+                    st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Distribución por Motivo</h4>", unsafe_allow_html=True)
+                    if 'MOTIVO_AUSENCIA' in df_aus_periodo.columns and not df_aus_periodo.empty:
+                        res_mot_aus = df_aus_periodo.groupby('MOTIVO_AUSENCIA')['DIAS_AUSENCIA'].sum().reset_index(name='DIAS')
+                        fig_mot_aus = px.pie(res_mot_aus, names='MOTIVO_AUSENCIA', values='DIAS', hole=0.4, color_discrete_sequence=paleta_neutra)
+                        fig_mot_aus.update_traces(textinfo='percent', hovertemplate="<b>%{label}</b><br>Días: %{value} (%{percent})<extra></extra>")
+                        fig_mot_aus.update_layout(font=dict(color="#475569"), margin=dict(t=10))
+                        st.plotly_chart(fig_mot_aus, use_container_width=True)
+                        
+                with col_a2:
+                    st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top 10 Áreas (Días Perdidos)</h4>", unsafe_allow_html=True)
+                    if 'AREA' in df_aus_periodo.columns and not df_aus_periodo.empty:
+                        res_area_aus = df_aus_periodo.groupby('AREA')['DIAS_AUSENCIA'].sum().reset_index(name='DIAS').sort_values('DIAS', ascending=False).head(10)
+                        fig_area_aus = px.bar(res_area_aus, x='DIAS', y='AREA', orientation='h', text='DIAS', color_discrete_sequence=[paleta_neutra[2]])
+                        fig_area_aus.update_traces(hovertemplate="<b>Área: %{y}</b><br>Días perdidos: %{text}<extra></extra>")
+                        fig_area_aus.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="Días Perdidos", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
+                        st.plotly_chart(fig_area_aus, use_container_width=True)
+                
+                st.markdown("<br><h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual del Ausentismo (Días Perdidos)</h4>", unsafe_allow_html=True)
+                df_aus_hist = df_aus[df_aus['FECHA_AUS_DT'].dt.year >= anio_analisis - 1].copy()
+                if not df_aus_hist.empty:
+                    df_aus_hist['Mes_Esp'] = df_aus_hist['FECHA_AUS_DT'].dt.month.map(meses_nombres) + " " + df_aus_hist['FECHA_AUS_DT'].dt.year.astype(str)
+                    df_aus_hist['Periodo'] = df_aus_hist['FECHA_AUS_DT'].dt.to_period('M')
+                    res_evol_aus = df_aus_hist.groupby('Periodo')['DIAS_AUSENCIA'].sum().reset_index()
+                    res_evol_aus['Fecha'] = res_evol_aus['Periodo'].dt.to_timestamp()
+                    res_evol_aus['Mes_Esp'] = res_evol_aus['Fecha'].dt.month.map(meses_nombres) + " " + res_evol_aus['Fecha'].dt.year.astype(str)
+                    
+                    fig_evol_aus = px.line(res_evol_aus, x='Fecha', y='DIAS_AUSENCIA', markers=True, text='DIAS_AUSENCIA')
+                    fig_evol_aus.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#ca8a04"), line=dict(color="#eab308", width=2), hovertemplate="<b>%{x}</b><br>%{y} Días<extra></extra>")
+                    fig_evol_aus.update_xaxes(title="", tickmode='array', tickvals=res_evol_aus['Fecha'], ticktext=res_evol_aus['Mes_Esp'], tickangle=-45, showgrid=False)
+                    fig_evol_aus.update_yaxes(title="Días Ausentes", showgrid=True, gridcolor='#f1f5f9')
+                    fig_evol_aus.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=300) 
+                    st.plotly_chart(fig_evol_aus, use_container_width=True)
+
+                with st.expander("↳ Ver Nómina Interactiva de Ausentismo"):
+                    df_aus_periodo['FECHA_AUS_STR'] = df_aus_periodo['FECHA_AUS_DT'].dt.strftime('%d/%m/%Y')
+                    cols_aus = [c for c in ['FECHA_AUS_STR', 'NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'MOTIVO_AUSENCIA', 'DIAS_AUSENCIA'] if c in df_aus_periodo.columns]
+                    st.dataframe(df_aus_periodo.sort_values(by='FECHA_AUS_DT', ascending=False)[cols_aus].rename(columns={'FECHA_AUS_STR': 'FECHA AUSENTISMO'}), use_container_width=True)
+
+            else:
+                st.info("No se detectó columna de fechas o datos en la base de ausentismo para analizar.")
+        except Exception as e:
+            st.error(f"Error al cargar módulo de ausentismo. Detalle técnico: {e}")
 
 except Exception as e:
     st.error(f"Error técnico general: {e}")
