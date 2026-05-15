@@ -111,8 +111,6 @@ def load_data_aus():
         df = pd.read_csv(CSV_URL_AUSENTISMO, dtype=str)
         df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
         
-        # Mapeo estricto basado en tus indicaciones: 
-        # C=Empresa(2), D=Localidad(3), E=Área(4), F=Licencia(5), G=Fecha(6), H=Fecha Alternativa(7)
         if len(df.columns) >= 7:
             df['EMPRESA'] = df.iloc[:, 2].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan)
             df['LOCALIDAD'] = df.iloc[:, 3].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan)
@@ -126,14 +124,14 @@ def load_data_aus():
             if df['FECHA_AUS_DT'].isna().all() and len(df.columns) >= 8:
                 df['FECHA_AUS_DT'] = pd.to_datetime(df.iloc[:, 7], dayfirst=True, errors='coerce')
                 
-        # Días (Fallback robusto buscando la palabra DIAS o por defecto 1)
+        # Días
         col_dias = next((c for c in df.columns if 'DIAS' in c or 'CANTIDAD' in c), None)
         if col_dias: 
             df['DIAS_AUS'] = pd.to_numeric(df[col_dias], errors='coerce').fillna(1)
         else: 
             df['DIAS_AUS'] = 1
             
-        # Nombre (Buscando palabra NOMBRE o usando la columna B)
+        # Nombre
         col_nombre = next((c for c in df.columns if 'NOMBRE' in c or 'COLAB' in c or 'APELLIDO' in c), None)
         if not col_nombre and len(df.columns) > 1: col_nombre = df.columns[1]
         df['NOMBRE_AUS'] = df[col_nombre] if col_nombre else 'DESCONOCIDO'
@@ -147,7 +145,7 @@ try:
     hoy = datetime.now()
 
     # =====================================================================
-    # 3. ENCABEZADO Y BOTÓN GRIS
+    # 3. ENCABEZADO Y FILTROS GLOBALES
     # =====================================================================
     col_icon, col_text, col_btn = st.columns([0.5, 9.5, 2])
     with col_icon:
@@ -166,30 +164,19 @@ try:
     df_filt = df_raw.copy()
     
     with f4: anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
-    
-    # =====================================================================
-    # LÓGICA DE MESES DINÁMICA
-    # =====================================================================
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
-        
-        if anio_analisis == hoy.year:
-            opciones_meses = list(range(1, hoy.month + 1))
-        else:
-            opciones_meses = list(range(1, 13))
-            
+        opciones_meses = list(range(1, hoy.month + 1)) if anio_analisis == hoy.year else list(range(1, 13))
         meses_sel = st.multiselect("MESES", opciones_meses, default=opciones_meses, format_func=lambda x: meses_nombres[x])
-        if not meses_sel:
-            meses_sel = opciones_meses
-            st.warning("Debe seleccionar al menos un mes.")
+        if not meses_sel: meses_sel = opciones_meses
             
     mes_fin = max(meses_sel)
     mes_inicio = min(meses_sel)
-
     ultimo_dia = calendar.monthrange(anio_analisis, mes_fin)[1]
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_fin:02d}-{ultimo_dia}")
     fecha_inicio_periodo = pd.to_datetime(f"{anio_analisis}-{mes_inicio:02d}-01")
 
+    # Lógica de Antigüedad
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
     labels_ant = ['< 1 año', '1 a 3 años', '3 a 5 años', '5 a 10 años', '+ 10 años']
@@ -226,6 +213,7 @@ try:
                 sel_lider = st.multiselect("LÍDER", get_opts(col_lider, df_filt), placeholder="Todos")
                 if sel_lider: df_filt = df_filt[df_filt[col_lider].isin(sel_lider)]
 
+    # Cálculo de Dotación en el periodo
     df_periodo = df_filt[(df_filt['FECHA_ING_DT'] <= fecha_corte) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_corte))].copy()
     dot_actual = len(df_periodo)
 
@@ -249,11 +237,10 @@ try:
     historia_datos = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas_historia]
     df_historia = pd.DataFrame(historia_datos) if historia_datos else pd.DataFrame()
     if not df_historia.empty:
-        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
-        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
+        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_nombres) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. PESTAÑAS MAESTRAS
+    # 4. PESTAÑAS PRINCIPALES
     # =====================================================================
     tab_dotacion, tab_rotacion, tab_ausentismo = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención", "⚕️ Análisis de Ausentismo"])
 
@@ -858,7 +845,7 @@ try:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
 
     # ---------------------------------------------------------------------
-    # TAB 3: AUSENTISMO Y NOVEDADES (Pestaña nueva y completa)
+    # TAB 3: AUSENTISMO Y NOVEDADES (Con interactividad cruzada)
     # ---------------------------------------------------------------------
     with tab_ausentismo:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ausentismo y Novedades</h3>", unsafe_allow_html=True)
@@ -881,10 +868,33 @@ try:
                     df_aus_kpi = df_aus_kpi[df_aus_kpi['AREA'].isin(sel_area)]
                 
                 if not df_aus_kpi.empty:
-                    # KPIs principales
-                    total_dias = df_aus_kpi['DIAS_AUS'].sum()
-                    total_casos = len(df_aus_kpi)
-                    colabs_ausentes = df_aus_kpi['NOMBRE_AUS'].nunique() if 'NOMBRE_AUS' in df_aus_kpi.columns else 0
+                    # MANEJO DE CLICS (INTERACTIVIDAD CRUZADA DE AUSENTISMO)
+                    sel_aus_lic, sel_aus_emp, sel_aus_area = None, None, None
+                    
+                    if 'k_aus_lic' in st.session_state and isinstance(st.session_state.k_aus_lic, dict) and st.session_state.k_aus_lic.get('selection', {}).get('points'): 
+                        sel_aus_lic = st.session_state.k_aus_lic['selection']['points'][0].get('label')
+                    if 'k_aus_emp' in st.session_state and isinstance(st.session_state.k_aus_emp, dict) and st.session_state.k_aus_emp.get('selection', {}).get('points'): 
+                        sel_aus_emp = st.session_state.k_aus_emp['selection']['points'][0].get('y')
+                    if 'k_aus_area' in st.session_state and isinstance(st.session_state.k_aus_area, dict) and st.session_state.k_aus_area.get('selection', {}).get('points'): 
+                        sel_aus_area = st.session_state.k_aus_area['selection']['points'][0].get('y')
+
+                    def cross_filter_aus(exclude_chart):
+                        df_x = df_aus_kpi.copy()
+                        if exclude_chart != 'lic' and sel_aus_lic and 'LICENCIA' in df_x.columns: 
+                            df_x = df_x[df_x['LICENCIA'] == sel_aus_lic]
+                        if exclude_chart != 'emp' and sel_aus_emp and 'EMPRESA' in df_x.columns: 
+                            df_x = df_x[df_x['EMPRESA'] == sel_aus_emp]
+                        if exclude_chart != 'area' and sel_aus_area and 'AREA' in df_x.columns: 
+                            df_x = df_x[df_x['AREA'] == sel_aus_area]
+                        return df_x
+
+                    # Para las métricas y la tabla general, usamos la data con todos los clics aplicados
+                    df_aus_filtered = cross_filter_aus('none')
+
+                    # KPIs principales (Reaccionan a los clics)
+                    total_dias = df_aus_filtered['DIAS_AUS'].sum() if 'DIAS_AUS' in df_aus_filtered.columns else 0
+                    total_casos = len(df_aus_filtered)
+                    colabs_ausentes = df_aus_filtered['NOMBRE_AUS'].nunique() if 'NOMBRE_AUS' in df_aus_filtered.columns else 0
                     
                     ca1, ca2, ca3 = st.columns(3)
                     ca1.metric("Días Totales Perdidos", f"{int(total_dias)}")
@@ -893,56 +903,68 @@ try:
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # Gráficos de Ausentismo (Ahora 3 columnas con Tipos de Licencias)
+                    # Gráficos de Ausentismo
                     c_aus1, c_aus2, c_aus3 = st.columns(3)
                     
                     with c_aus1:
-                        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Tipos de Licencias / Ausencias</h4>", unsafe_allow_html=True)
-                        if 'LICENCIA' in df_aus_kpi.columns:
-                            res_lic = df_aus_kpi.groupby('LICENCIA')['DIAS_AUS'].sum().reset_index(name='DIAS')
+                        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Tipos de Licencias</h4>", unsafe_allow_html=True)
+                        df_chart_lic = cross_filter_aus('lic')
+                        if not df_chart_lic.empty and 'LICENCIA' in df_chart_lic.columns:
+                            res_lic = df_chart_lic.groupby('LICENCIA')['DIAS_AUS'].sum().reset_index(name='DIAS')
                             fig_lic = px.pie(res_lic, names='LICENCIA', values='DIAS', hole=0.4, color_discrete_sequence=paleta_neutra)
                             fig_lic.update_traces(textinfo='percent+label', hovertemplate="<b>%{label}</b><br>Días: %{value} (%{percent})<extra></extra>")
                             fig_lic.update_layout(font=dict(color="#475569"), margin=dict(t=10), showlegend=False)
-                            st.plotly_chart(fig_lic, use_container_width=True)
+                            draw_safe_interactive_chart(fig_lic, "k_aus_lic")
                         else:
-                            st.info("No se detectó columna de Licencia.")
+                            st.info("No hay datos de Licencias para graficar.")
                     
                     with c_aus2:
                         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Ausentismo por Empresa</h4>", unsafe_allow_html=True)
-                        if 'EMPRESA' in df_aus_kpi.columns:
-                            res_emp_aus = df_aus_kpi.groupby('EMPRESA')['DIAS_AUS'].sum().reset_index(name='DIAS').sort_values('DIAS', ascending=True)
+                        df_chart_emp_aus = cross_filter_aus('emp')
+                        if not df_chart_emp_aus.empty and 'EMPRESA' in df_chart_emp_aus.columns:
+                            res_emp_aus = df_chart_emp_aus.groupby('EMPRESA')['DIAS_AUS'].sum().reset_index(name='DIAS').sort_values('DIAS', ascending=True)
                             fig_emp_aus = px.bar(res_emp_aus, x='DIAS', y='EMPRESA', orientation='h', text='DIAS', color_discrete_sequence=[paleta_neutra[0]])
                             fig_emp_aus.update_traces(hovertemplate="<b>%{y}</b><br>Días: %{text}<extra></extra>")
                             fig_emp_aus.update_layout(xaxis_title="Días Perdidos", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
-                            st.plotly_chart(fig_emp_aus, use_container_width=True)
+                            draw_safe_interactive_chart(fig_emp_aus, "k_aus_emp")
                         else:
                             st.info("Columna de Empresa no detectada.")
                             
                     with c_aus3:
                         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Ausentismo por Área</h4>", unsafe_allow_html=True)
-                        if 'AREA' in df_aus_kpi.columns:
-                            res_area_aus = df_aus_kpi.groupby('AREA')['DIAS_AUS'].sum().reset_index(name='DIAS').sort_values('DIAS', ascending=True)
+                        df_chart_area_aus = cross_filter_aus('area')
+                        if not df_chart_area_aus.empty and 'AREA' in df_chart_area_aus.columns:
+                            res_area_aus = df_chart_area_aus.groupby('AREA')['DIAS_AUS'].sum().reset_index(name='DIAS').sort_values('DIAS', ascending=True)
                             fig_area_aus = px.bar(res_area_aus, x='DIAS', y='AREA', orientation='h', text='DIAS', color_discrete_sequence=[paleta_neutra[1]])
                             fig_area_aus.update_traces(hovertemplate="<b>%{y}</b><br>Días: %{text}<extra></extra>")
                             fig_area_aus.update_layout(xaxis_title="Días Perdidos", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
-                            st.plotly_chart(fig_area_aus, use_container_width=True)
+                            draw_safe_interactive_chart(fig_area_aus, "k_aus_area")
                         else:
                             st.info("Columna de Área no detectada.")
                             
                     st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    filtros_aus_activos = [f for f in [f"Licencia: {sel_aus_lic}" if sel_aus_lic else "", f"Empresa: {sel_aus_emp}" if sel_aus_emp else "", f"Área: {sel_aus_area}" if sel_aus_area else ""] if f]
+                    
+                    if filtros_aus_activos:
+                        st.markdown(f"<div style='background:#f1f5f9; padding:15px; border-radius:8px; border-left: 4px solid #2563eb; margin-bottom:15px;'><b>↳ Filtros Activos Ausentismo ({len(df_aus_filtered)} resultados):</b> {' | '.join(filtros_aus_activos)}</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para filtrar los datos de la curva y la tabla inferior.</p>", unsafe_allow_html=True)
+                        
                     st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Días Perdidos</h4>", unsafe_allow_html=True)
                     
-                    res_evol_aus = df_aus_kpi.groupby(df_aus_kpi['FECHA_AUS_DT'].dt.to_period('M')).agg({'DIAS_AUS':'sum'}).reset_index()
-                    res_evol_aus['MES_STR'] = res_evol_aus['FECHA_AUS_DT'].dt.month.map(meses_nombres) + " " + res_evol_aus['FECHA_AUS_DT'].dt.year.astype(str)
-                    
-                    fig_evol_aus = px.line(res_evol_aus, x='MES_STR', y='DIAS_AUS', markers=True, text='DIAS_AUS')
-                    fig_evol_aus.update_traces(textposition="top center", marker=dict(size=7, color="#2563eb"), line=dict(color="#3b82f6", width=2))
-                    fig_evol_aus.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', xaxis_title="", yaxis_title="Días de Ausentismo", margin=dict(t=10, b=10), font=dict(color="#475569"))
-                    st.plotly_chart(fig_evol_aus, use_container_width=True)
+                    if not df_aus_filtered.empty:
+                        res_evol_aus = df_aus_filtered.groupby(df_aus_filtered['FECHA_AUS_DT'].dt.to_period('M')).agg({'DIAS_AUS':'sum'}).reset_index()
+                        res_evol_aus['MES_STR'] = res_evol_aus['FECHA_AUS_DT'].dt.month.map(meses_nombres) + " " + res_evol_aus['FECHA_AUS_DT'].dt.year.astype(str)
+                        
+                        fig_evol_aus = px.line(res_evol_aus, x='MES_STR', y='DIAS_AUS', markers=True, text='DIAS_AUS')
+                        fig_evol_aus.update_traces(textposition="top center", marker=dict(size=7, color="#2563eb"), line=dict(color="#3b82f6", width=2))
+                        fig_evol_aus.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', xaxis_title="", yaxis_title="Días de Ausentismo", margin=dict(t=10, b=10), font=dict(color="#475569"))
+                        st.plotly_chart(fig_evol_aus, use_container_width=True)
 
-                    with st.expander("Ver Registro Detallado de Novedades"):
-                        cols_aus_show = [c for c in ['FECHA_AUS_DT', 'NOMBRE_AUS', 'EMPRESA', 'LOCALIDAD', 'AREA', 'LICENCIA', 'DIAS_AUS'] if c in df_aus_kpi.columns]
-                        df_show_aus = df_aus_kpi[cols_aus_show].copy()
+                    with st.expander("Ver Registro Detallado de Novedades (Filtrado)"):
+                        cols_aus_show = [c for c in ['FECHA_AUS_DT', 'NOMBRE_AUS', 'EMPRESA', 'LOCALIDAD', 'AREA', 'LICENCIA', 'DIAS_AUS'] if c in df_aus_filtered.columns]
+                        df_show_aus = df_aus_filtered[cols_aus_show].copy()
                         if 'FECHA_AUS_DT' in df_show_aus.columns:
                             df_show_aus['FECHA_AUS_DT'] = df_show_aus['FECHA_AUS_DT'].dt.strftime('%d/%m/%Y')
                             df_show_aus = df_show_aus.rename(columns={'FECHA_AUS_DT': 'FECHA', 'NOMBRE_AUS': 'COLABORADOR', 'LICENCIA': 'TIPO LICENCIA', 'DIAS_AUS': 'DÍAS'})
