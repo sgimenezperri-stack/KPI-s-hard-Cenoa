@@ -57,9 +57,7 @@ paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a
 # =====================================================================
 CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 CSV_URL_MOVIMIENTOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=176641150&single=true&output=csv" 
-
-# 👇 REEMPLAZA EL GID AQUÍ POR EL DE LA SOLAPA "Hechos_Ausentismo" 👇
-CSV_URL_AUSENTISMO = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=TU_GID_AUSENTISMO_AQUI&single=true&output=csv"
+CSV_URL_AUSENTISMO = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=966031933&single=true&output=csv"
 
 @st.cache_data(ttl=600)
 def load_data():
@@ -113,26 +111,22 @@ def load_data_aus():
         df = pd.read_csv(CSV_URL_AUSENTISMO, dtype=str)
         df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
         
-        # Mapeo dinámico de columnas de ausentismo
-        for col in df.columns:
-            if 'FECHA' in col and ('INICIO' in col or 'AUS' in col or col == 'FECHA'):
-                df['FECHA_AUS'] = df[col]
-            elif 'MOTIVO' in col or 'RAZON' in col or 'TIPO' in col:
-                df['MOTIVO_AUS'] = df[col]
-            elif 'DIAS' in col or 'CANTIDAD' in col:
-                df['DIAS_AUS'] = pd.to_numeric(df[col], errors='coerce').fillna(1)
-            elif 'NOMBRE' in col or 'COLAB' in col or 'APELLIDO' in col:
-                df['NOMBRE_AUS'] = df[col]
-                
-        if 'FECHA_AUS' in df.columns:
-            df['FECHA_AUS_DT'] = pd.to_datetime(df['FECHA_AUS'], dayfirst=True, errors='coerce')
+        # Mapeo dinámico para ausentismo
+        col_fecha = next((c for c in df.columns if 'FECHA' in c), None)
+        col_motivo = next((c for c in df.columns if 'MOTIVO' in c or 'RAZON' in c or 'TIPO' in c), None)
+        col_dias = next((c for c in df.columns if 'DIAS' in c or 'CANTIDAD' in c), None)
+        col_nombre = next((c for c in df.columns if 'NOMBRE' in c or 'COLAB' in c or 'APELLIDO' in c), None)
         
-        if 'DIAS_AUS' not in df.columns:
-            df['DIAS_AUS'] = 1 # Por defecto 1 día si no hay columna de días
-            
+        if col_fecha: df['FECHA_AUS_DT'] = pd.to_datetime(df[col_fecha], dayfirst=True, errors='coerce')
+        if col_dias: df['DIAS_AUS'] = pd.to_numeric(df[col_dias], errors='coerce').fillna(1)
+        else: df['DIAS_AUS'] = 1
+        
+        df['MOTIVO_AUS'] = df[col_motivo] if col_motivo else 'NO DECLARADO'
+        df['NOMBRE_AUS'] = df[col_nombre] if col_nombre else 'DESCONOCIDO'
+        
         return df
     except Exception:
-        return pd.DataFrame() # Devuelve vacío si falla o no está el GID
+        return pd.DataFrame()
 
 try:
     df_raw = load_data()
@@ -165,7 +159,6 @@ try:
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
         
-        # Restringe los meses al mes actual si se selecciona el año corriente
         if anio_analisis == hoy.year:
             opciones_meses = list(range(1, hoy.month + 1))
         else:
@@ -246,7 +239,7 @@ try:
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. PESTAÑAS MAESTRAS (AHORA SON 3)
+    # 4. PESTAÑAS MAESTRAS
     # =====================================================================
     tab_dotacion, tab_rotacion, tab_ausentismo = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención", "⚕️ Análisis de Ausentismo"])
 
@@ -851,7 +844,7 @@ try:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
 
     # ---------------------------------------------------------------------
-    # TAB 3: AUSENTISMO Y NOVEDADES
+    # TAB 3: AUSENTISMO Y NOVEDADES (Pestaña nueva y completa)
     # ---------------------------------------------------------------------
     with tab_ausentismo:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ausentismo y Novedades</h3>", unsafe_allow_html=True)
@@ -859,24 +852,27 @@ try:
             df_aus_raw = load_data_aus()
             
             if not df_aus_raw.empty and 'FECHA_AUS_DT' in df_aus_raw.columns:
-                # Filtramos por el año y meses seleccionados en el panel superior
+                # Filtrar por año y meses globales del panel
                 df_aus_periodo = df_aus_raw[
                     (df_aus_raw['FECHA_AUS_DT'].dt.year == anio_analisis) & 
                     (df_aus_raw['FECHA_AUS_DT'].dt.month.isin(meses_sel))
                 ].copy()
                 
                 if not df_aus_periodo.empty:
-                    # Hacemos un cruce con la nómina para traer Área y Empresa si es posible
+                    # Cruzar con la base de dotación para tener área, empresa y localidad
                     if 'NOMBRE_AUS' in df_aus_periodo.columns and col_nombre:
-                        df_aus_kpi = df_aus_periodo.merge(df_raw[[col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA']].drop_duplicates(subset=[col_nombre]), left_on='NOMBRE_AUS', right_on=col_nombre, how='left')
+                        df_aus_kpi = df_aus_periodo.merge(
+                            df_raw[[col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA']].drop_duplicates(subset=[col_nombre]), 
+                            left_on='NOMBRE_AUS', right_on=col_nombre, how='left'
+                        )
                     else:
                         df_aus_kpi = df_aus_periodo.copy()
                     
+                    # KPIs principales
                     total_dias = df_aus_kpi['DIAS_AUS'].sum() if 'DIAS_AUS' in df_aus_kpi.columns else len(df_aus_kpi)
                     total_casos = len(df_aus_kpi)
                     colabs_ausentes = df_aus_kpi['NOMBRE_AUS'].nunique() if 'NOMBRE_AUS' in df_aus_kpi.columns else 0
                     
-                    # KPIs principales
                     ca1, ca2, ca3 = st.columns(3)
                     ca1.metric("Días Totales Perdidos", f"{int(total_dias)}")
                     ca2.metric("Total de Novedades (Casos)", f"{total_casos}")
@@ -905,7 +901,7 @@ try:
                             fig_emp_aus.update_layout(xaxis_title="Días Perdidos", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
                             st.plotly_chart(fig_emp_aus, use_container_width=True)
                         else:
-                            st.info("No se detectó empresa (revisa que los nombres en Ausentismo coincidan con Dotación).")
+                            st.info("No se detectó la columna 'EMPRESA' en el cruce de datos.")
                             
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Días Perdidos</h4>", unsafe_allow_html=True)
@@ -919,12 +915,16 @@ try:
                     st.plotly_chart(fig_evol_aus, use_container_width=True)
 
                     with st.expander("Ver Registro Detallado de Novedades"):
-                        cols_aus_show = [c for c in ['FECHA_AUS', 'NOMBRE_AUS', 'EMPRESA', 'LOCALIDAD', 'AREA', 'MOTIVO_AUS', 'DIAS_AUS'] if c in df_aus_kpi.columns]
-                        st.dataframe(df_aus_kpi[cols_aus_show].sort_values(by='FECHA_AUS', ascending=False), use_container_width=True)
+                        cols_aus_show = [c for c in ['FECHA_AUS_DT', 'NOMBRE_AUS', 'EMPRESA', 'LOCALIDAD', 'AREA', 'MOTIVO_AUS', 'DIAS_AUS'] if c in df_aus_kpi.columns]
+                        df_show_aus = df_aus_kpi[cols_aus_show].copy()
+                        if 'FECHA_AUS_DT' in df_show_aus.columns:
+                            df_show_aus['FECHA_AUS_DT'] = df_show_aus['FECHA_AUS_DT'].dt.strftime('%d/%m/%Y')
+                            df_show_aus = df_show_aus.rename(columns={'FECHA_AUS_DT': 'FECHA', 'NOMBRE_AUS': 'COLABORADOR', 'MOTIVO_AUS': 'MOTIVO', 'DIAS_AUS': 'DÍAS'})
+                        st.dataframe(df_show_aus, use_container_width=True)
                 else:
                     st.info("No hay registros de ausentismo para el periodo seleccionado.")
             else:
-                st.warning("⚠️ **Atención:** Para visualizar esta pestaña correctamente, debes actualizar la URL en el código (`CSV_URL_AUSENTISMO` línea 66) con el **GID** correcto de tu solapa de 'Hechos_Ausentismo'. El dashboard intentó leerla pero no encontró datos válidos.")
+                st.warning("⚠️ **Atención:** El dashboard no pudo procesar correctamente las fechas de la solapa de Ausentismo.")
         except Exception as e:
             st.error(f"Error técnico al cargar el módulo de Ausentismo. Detalle: {e}")
 
