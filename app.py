@@ -111,8 +111,13 @@ def load_data_aus():
         df = pd.read_csv(CSV_URL_AUSENTISMO, dtype=str)
         df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
         
-        # Mapeo dinámico para ausentismo
-        col_fecha = next((c for c in df.columns if 'FECHA' in c), None)
+        # Mapeo dinámico para ausentismo ajustado a Columnas G y H
+        col_fecha = next((c for c in df.columns if 'FECHA' in c or 'INICIO' in c or 'DESDE' in c), None)
+        
+        # Forzar lectura de la columna G (índice 6) si no encuentra la palabra clave
+        if not col_fecha and len(df.columns) >= 7:
+            col_fecha = df.columns[6]
+            
         col_motivo = next((c for c in df.columns if 'MOTIVO' in c or 'RAZON' in c or 'TIPO' in c), None)
         col_dias = next((c for c in df.columns if 'DIAS' in c or 'CANTIDAD' in c), None)
         col_nombre = next((c for c in df.columns if 'NOMBRE' in c or 'COLAB' in c or 'APELLIDO' in c), None)
@@ -133,14 +138,14 @@ try:
     hoy = datetime.now()
 
     # =====================================================================
-    # 3. ENCABEZADO Y BOTÓN GRIS
+    # 3. ENCABEZADO Y FILTROS GLOBALES
     # =====================================================================
     col_icon, col_text, col_btn = st.columns([0.5, 9.5, 2])
     with col_icon:
         st.markdown("<div style='background-color: #0f172a; width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; letter-spacing: 1px; margin-top: 5px;'>GC</div>", unsafe_allow_html=True)
     with col_text:
         st.markdown("<div class='main-title'>People Analytics & HR Hard Metrics</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub-title'>Grupo Cenoa | Panel de Control de Dotación y Rotación</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sub-title'>Grupo Cenoa | Panel de Control de Dotación, Rotación y Ausentismo</div>", unsafe_allow_html=True)
     with col_btn:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Actualizar Datos", type="secondary", use_container_width=True):
@@ -152,30 +157,19 @@ try:
     df_filt = df_raw.copy()
     
     with f4: anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
-    
-    # =====================================================================
-    # MEJORA: LÓGICA DE MESES DINÁMICA SEGÚN EL AÑO ACTUAL
-    # =====================================================================
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
-        
-        if anio_analisis == hoy.year:
-            opciones_meses = list(range(1, hoy.month + 1))
-        else:
-            opciones_meses = list(range(1, 13))
-            
+        opciones_meses = list(range(1, hoy.month + 1)) if anio_analisis == hoy.year else list(range(1, 13))
         meses_sel = st.multiselect("MESES", opciones_meses, default=opciones_meses, format_func=lambda x: meses_nombres[x])
-        if not meses_sel:
-            meses_sel = opciones_meses
-            st.warning("Debe seleccionar al menos un mes.")
+        if not meses_sel: meses_sel = opciones_meses
             
     mes_fin = max(meses_sel)
     mes_inicio = min(meses_sel)
-
     ultimo_dia = calendar.monthrange(anio_analisis, mes_fin)[1]
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_fin:02d}-{ultimo_dia}")
     fecha_inicio_periodo = pd.to_datetime(f"{anio_analisis}-{mes_inicio:02d}-01")
 
+    # Lógica de Antigüedad
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
     labels_ant = ['< 1 año', '1 a 3 años', '3 a 5 años', '5 a 10 años', '+ 10 años']
@@ -212,6 +206,7 @@ try:
                 sel_lider = st.multiselect("LÍDER", get_opts(col_lider, df_filt), placeholder="Todos")
                 if sel_lider: df_filt = df_filt[df_filt[col_lider].isin(sel_lider)]
 
+    # Cálculo de Dotación en el periodo
     df_periodo = df_filt[(df_filt['FECHA_ING_DT'] <= fecha_corte) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_corte))].copy()
     dot_actual = len(df_periodo)
 
@@ -235,11 +230,10 @@ try:
     historia_datos = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas_historia]
     df_historia = pd.DataFrame(historia_datos) if historia_datos else pd.DataFrame()
     if not df_historia.empty:
-        meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
-        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
+        df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_nombres) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. PESTAÑAS MAESTRAS
+    # 4. PESTAÑAS PRINCIPALES
     # =====================================================================
     tab_dotacion, tab_rotacion, tab_ausentismo = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención", "⚕️ Análisis de Ausentismo"])
 
@@ -844,7 +838,7 @@ try:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
 
     # ---------------------------------------------------------------------
-    # TAB 3: AUSENTISMO Y NOVEDADES (Pestaña nueva y completa)
+    # TAB 3: AUSENTISMO Y NOVEDADES
     # ---------------------------------------------------------------------
     with tab_ausentismo:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ausentismo y Novedades</h3>", unsafe_allow_html=True)
