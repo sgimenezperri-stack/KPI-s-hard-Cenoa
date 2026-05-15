@@ -70,7 +70,8 @@ def load_data():
     df['FECHA_ING_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
     df['FECHA_EGR_DT'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
     
-    cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO', 'CATEGORIA', 'CATEGORIA DE VARIABLE', 'FRECUENCIA DEL VARIABLE']
+    # Se agregó 'COBERTURA' al listado para asegurar limpieza del dato
+    cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO', 'CATEGORIA', 'CATEGORIA DE VARIABLE', 'FRECUENCIA DEL VARIABLE', 'COBERTURA']
     for c in cols_txt:
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], np.nan)
@@ -424,15 +425,34 @@ try:
                 
                 with tab_altas:
                     if len(altas_mes) > 0:
-                        altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
-                        res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
-                        res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/res_a['Cant'].sum()*100).round(1).astype(str) + "%)"
-                        fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
-                        fig_a.update_traces(hovertemplate="<b>%{x}</b><br>Altas: %{text}<extra></extra>")
-                        fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
-                        st.plotly_chart(fig_a, use_container_width=True)
+                        col_altas1, col_altas2 = st.columns([2, 1])
+                        
+                        with col_altas1:
+                            st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Altas por Sede y Área</h4>", unsafe_allow_html=True)
+                            altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
+                            res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
+                            res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/res_a['Cant'].sum()*100).round(1).astype(str) + "%)"
+                            fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
+                            fig_a.update_traces(hovertemplate="<b>%{x}</b><br>Altas: %{text}<extra></extra>")
+                            fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
+                            st.plotly_chart(fig_a, use_container_width=True)
+                            
+                        with col_altas2:
+                            st.markdown("<h4 style='font-size: 14px; font-weight: 600; color: #475569;'>Motivo de Ingreso (Cobertura)</h4>", unsafe_allow_html=True)
+                            if 'COBERTURA' in altas_mes.columns:
+                                altas_mes['COBERTURA'] = altas_mes['COBERTURA'].replace(['NAN', 'NONE', '', '0', 'NaN'], 'NO DECLARADO')
+                                altas_mes['COBERTURA'] = altas_mes['COBERTURA'].fillna('NO DECLARADO')
+                                res_cob = altas_mes.groupby('COBERTURA').size().reset_index(name='Cant')
+                                fig_cob = px.pie(res_cob, names='COBERTURA', values='Cant', hole=0.4, color_discrete_sequence=paleta_neutra)
+                                fig_cob.update_traces(textinfo='percent', hovertemplate="<b>%{label}</b><br>Ingresos: %{value} (%{percent})<extra></extra>")
+                                fig_cob.update_layout(font=dict(color="#475569"), margin=dict(t=10), showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5))
+                                st.plotly_chart(fig_cob, use_container_width=True)
+                            else:
+                                st.info("La columna 'COBERTURA' no se encontró en la base de datos.")
+
                         with st.expander("Ver detalle de colaboradores ingresantes"):
-                            st.dataframe(altas_mes[[c for c in cols_base if c in altas_mes.columns]], use_container_width=True)
+                            cols_mostrar_altas = [c for c in cols_base + ['COBERTURA'] if c in altas_mes.columns]
+                            st.dataframe(altas_mes[cols_mostrar_altas], use_container_width=True)
                 
                 with tab_bajas:
                     if len(bajas_mes) > 0:
