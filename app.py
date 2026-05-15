@@ -8,80 +8,30 @@ import calendar
 # =====================================================================
 # 1. CONFIGURACIÓN DE PÁGINA Y CSS
 # =====================================================================
-st.set_page_config(
-    page_title="HR Metrics | Grupo Cenoa", 
-    layout="wide", 
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="HR Metrics | Grupo Cenoa", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    
     html, body, [class*="css"]  {
         font-family: 'Inter', sans-serif;
     }
-    
-    .stApp { 
-        background-color: #f8fafc; 
-    }
-    
-    h1, h2, h3 { 
-        color: #1e293b !important; 
-    }
-    
-    .main-title { 
-        color: #0f172a; 
-        font-weight: 800; 
-        font-size: 30px; 
-        margin-bottom: -5px; 
-        letter-spacing: -0.5px; 
-    }
-    
-    .sub-title { 
-        color: #2563eb; 
-        font-weight: 700; 
-        font-size: 13px; 
-        letter-spacing: 1.5px; 
-        text-transform: uppercase; 
-        margin-bottom: 20px; 
-    }
-    
+    .stApp { background-color: #f8fafc; }
+    h1, h2, h3 { color: #1e293b !important; }
+    .main-title { color: #0f172a; font-weight: 800; font-size: 30px; margin-bottom: -5px; letter-spacing: -0.5px; }
+    .sub-title { color: #2563eb; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 20px; }
     [data-testid="metric-container"] {
-        background-color: #ffffff; 
-        border: 1px solid #e2e8f0; 
-        border-radius: 8px; 
-        padding: 20px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
+    [data-testid="metric-container"] label { color: #64748b !important; font-weight: 600; font-size: 13px;}
+    [data-testid="metric-container"] div { color: #0f172a !important; font-weight: 700; }
+    hr { border-color: #e2e8f0; }
+    .stExpander { background-color: #ffffff; border: 1px solid #e2e8f0 !important; border-radius: 6px !important; }
     
-    [data-testid="metric-container"] label { 
-        color: #64748b !important; 
-        font-weight: 600; 
-        font-size: 13px;
-    }
-    
-    [data-testid="metric-container"] div { 
-        color: #0f172a !important; 
-        font-weight: 700; 
-    }
-    
-    hr { 
-        border-color: #e2e8f0; 
-    }
-    
-    .stExpander { 
-        background-color: #ffffff; 
-        border: 1px solid #e2e8f0 !important; 
-        border-radius: 6px !important; 
-    }
-    
-    /* MEJORA: Diseño destacado de las pestañas superiores */
     .stTabs [data-baseweb="tab-list"] {
         gap: 30px;
         border-bottom: 2px solid #e2e8f0;
     }
-    
     .stTabs [data-baseweb="tab"] {
         height: 60px;
         white-space: pre-wrap;
@@ -93,7 +43,6 @@ st.markdown("""
         font-weight: 700; 
         color: #94a3b8;
     }
-    
     .stTabs [aria-selected="true"] {
         color: #1e293b !important;
         border-bottom: 4px solid #2563eb !important;
@@ -108,39 +57,25 @@ paleta_neutra = ['#2563eb', '#64748b', '#94a3b8', '#334155', '#cbd5e1', '#0f172a
 # =====================================================================
 CSV_URL_DOTACION = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?output=csv"
 CSV_URL_MOVIMIENTOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=176641150&single=true&output=csv" 
-CSV_URL_AUSENTISMO = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTId4k_HPY240A63Nn2desUFZHUvEC4VB0Xnl4x0_JVFJUmduPilSBYMnjuIeTN3A/pub?gid=966031933&single=true&output=csv"
 
 @st.cache_data(ttl=600)
 def load_data():
     df = pd.read_csv(CSV_URL_DOTACION, dtype=str)
     df.columns = [str(c).strip().upper() for c in df.columns]
     df = df.rename(columns={
-        'ÁREA': 'AREA', 
-        'F. INGR': 'FECHA DE INGRESO', 
-        'FECHA INGRESO': 'FECHA DE INGRESO',
-        'F. EGRESO': 'FECHA DE EGRESO', 
-        'FECHA EGRESO': 'FECHA DE EGRESO',
-        'MOTIVO EGRESO': 'MOTIVO DE EGRESO', 
-        'MOTIVOS DE EGRESO': 'MOTIVO DE EGRESO', 
-        'MOTIVO': 'MOTIVO DE EGRESO'
+        'ÁREA': 'AREA', 'F. INGR': 'FECHA DE INGRESO', 'FECHA INGRESO': 'FECHA DE INGRESO',
+        'F. EGRESO': 'FECHA DE EGRESO', 'FECHA EGRESO': 'FECHA DE EGRESO',
+        'MOTIVO EGRESO': 'MOTIVO DE EGRESO', 'MOTIVOS DE EGRESO': 'MOTIVO DE EGRESO', 'MOTIVO': 'MOTIVO DE EGRESO'
     })
-    
     df['FECHA_ING_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
     df['FECHA_EGR_DT'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
     
-    cols_txt = [
-        'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'ESTADO', 
-        'PUESTO', 'MOTIVO DE EGRESO', 'CATEGORIA', 'CATEGORIA DE VARIABLE', 
-        'FRECUENCIA DEL VARIABLE'
-    ]
-    
+    cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO', 'CATEGORIA', 'CATEGORIA DE VARIABLE', 'FRECUENCIA DEL VARIABLE']
     for c in cols_txt:
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], np.nan)
             
-    if 'PUESTO' in df.columns: 
-        df = df[~df['PUESTO'].str.contains('PRACTICANTE', na=False)]
-        
+    if 'PUESTO' in df.columns: df = df[~df['PUESTO'].str.contains('PRACTICANTE', na=False)]
     return df
 
 @st.cache_data(ttl=600)
@@ -150,14 +85,10 @@ def load_data_mov():
     
     mapeo = {}
     for col in df.columns:
-        if 'FECHA' in col and ('MOV' in col or 'EFE' in col): 
-            mapeo[col] = 'FECHA_MOV'
-        elif 'TIPO' in col and 'MOV' in col: 
-            mapeo[col] = 'TIPO_MOV'
-        elif 'POTENCIAL' in col or 'EVALUAC' in col: 
-            mapeo[col] = 'POTENCIAL'
-        elif 'NOMBRE' in col or 'COLAB' in col or 'APELLIDO' in col: 
-            mapeo[col] = 'NOMBRE'
+        if 'FECHA' in col and ('MOV' in col or 'EFE' in col): mapeo[col] = 'FECHA_MOV'
+        elif 'TIPO' in col and 'MOV' in col: mapeo[col] = 'TIPO_MOV'
+        elif 'POTENCIAL' in col or 'EVALUAC' in col: mapeo[col] = 'POTENCIAL'
+        elif 'NOMBRE' in col or 'COLAB' in col or 'APELLIDO' in col: mapeo[col] = 'NOMBRE'
         elif 'ORIGEN' in col:
             if 'EMP' in col: mapeo[col] = 'EMP_ORIGEN'
             elif 'LOC' in col: mapeo[col] = 'LOC_ORIGEN'
@@ -169,142 +100,58 @@ def load_data_mov():
             elif 'PUEST' in col: mapeo[col] = 'PUESTO_DESTINO'
 
     df = df.rename(columns=mapeo)
-    
     if 'FECHA_MOV' in df.columns:
         df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
-        
-    cols_txt = ['EMP_ORIGEN', 'LOC_ORIGEN', 'PUESTO_ORIGEN', 'EMP_DESTINO', 'LOC_DESTINO', 'AREA_DESTINO', 'PUESTO_DESTINO', 'TIPO_MOV', 'POTENCIAL']
-    for c in cols_txt:
-        if c in df.columns:
-            df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], 'NO DECLARADO')
-            
     return df
 
-@st.cache_data(ttl=600)
-def load_data_ausentismo():
-    try:
-        df = pd.read_csv(CSV_URL_AUSENTISMO, dtype=str)
-        # Limpieza de nombres de columnas
-        df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A').replace('É','E') for c in df.columns]
-        
-        mapeo = {}
-        for col in df.columns:
-            # Buscamos coincidencias exactas o parciales según lo provisto
-            if 'DESDE' in col or ('FECHA' in col and ('INICIO' in col or 'AUS' in col)): 
-                if 'FECHA_AUSENTISMO' not in mapeo.values():
-                    mapeo[col] = 'FECHA_AUSENTISMO'
-            elif 'LICENCIA' in col or 'MOTIVO' in col or 'RAZON' in col: 
-                if 'MOTIVO_AUSENCIA' not in mapeo.values():
-                    mapeo[col] = 'MOTIVO_AUSENCIA'
-            elif 'TIEMPO' in col or 'DIAS' in col or 'DÍAS' in col or 'CANTIDAD' in col: 
-                if 'DIAS_AUSENCIA' not in mapeo.values():
-                    mapeo[col] = 'DIAS_AUSENCIA'
-            elif 'NOMBRE' in col or 'COLAB' in col or 'APELLIDO' in col: 
-                if 'NOMBRE' not in mapeo.values():
-                    mapeo[col] = 'NOMBRE'
-            elif 'EMP' in col: 
-                if 'EMPRESA' not in mapeo.values():
-                    mapeo[col] = 'EMPRESA'
-            elif 'LOC' in col: 
-                if 'LOCALIDAD' not in mapeo.values():
-                    mapeo[col] = 'LOCALIDAD'
-            elif 'AREA' in col or 'ÁREA' in col: 
-                if 'AREA' not in mapeo.values():
-                    mapeo[col] = 'AREA'
-            elif 'PUEST' in col: 
-                if 'PUESTO' not in mapeo.values():
-                    mapeo[col] = 'PUESTO'
-
-        df = df.rename(columns=mapeo)
-        
-        # Validación de seguridad
-        if 'FECHA_AUSENTISMO' not in df.columns:
-            for col in df.columns:
-                if 'FECHA' in col:
-                    df = df.rename(columns={col: 'FECHA_AUSENTISMO'})
-                    break
-
-        if 'FECHA_AUSENTISMO' in df.columns:
-            df['FECHA_AUS_DT'] = pd.to_datetime(df['FECHA_AUSENTISMO'], dayfirst=True, errors='coerce')
-            
-        if 'DIAS_AUSENCIA' in df.columns:
-            # Extraemos el número en caso de que el texto diga "5 días" o similar
-            df['DIAS_AUSENCIA'] = pd.to_numeric(df['DIAS_AUSENCIA'].astype(str).str.replace(',','.').str.extract(r'(\d+\.?\d*)', expand=False), errors='coerce').fillna(1)
-        else:
-            df['DIAS_AUSENCIA'] = 1 
-            
-        cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'MOTIVO_AUSENCIA']
-        for c in cols_txt:
-            if c in df.columns:
-                df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], 'NO DECLARADO')
-                
-        return df
-    except Exception as e:
-        return pd.DataFrame()
-
-# =====================================================================
-# INICIO DE LA APLICACIÓN
-# =====================================================================
 try:
     df_raw = load_data()
     hoy = datetime.now()
 
-    # ---------------------------------------------------------------------
-    # ENCABEZADO Y BOTÓN GRIS
-    # ---------------------------------------------------------------------
+    # =====================================================================
+    # 3. ENCABEZADO Y BOTÓN GRIS
+    # =====================================================================
     col_icon, col_text, col_btn = st.columns([0.5, 9.5, 2])
-    
     with col_icon:
         st.markdown("<div style='background-color: #0f172a; width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; letter-spacing: 1px; margin-top: 5px;'>GC</div>", unsafe_allow_html=True)
-        
     with col_text:
         st.markdown("<div class='main-title'>People Analytics & HR Hard Metrics</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub-title'>Grupo Cenoa | Gestión Estratégica de Capital Humano</div>", unsafe_allow_html=True)
-        
+        st.markdown("<div class='sub-title'>Grupo Cenoa | Panel de Control de Dotación y Rotación</div>", unsafe_allow_html=True)
     with col_btn:
         st.markdown("<br>", unsafe_allow_html=True)
-        # BOTON GRIS (secondary)
         if st.button("🔄 Actualizar Datos", type="secondary", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # ---------------------------------------------------------------------
-    # FILTROS GLOBALES
-    # ---------------------------------------------------------------------
     f1, f2, f3, f4, f5 = st.columns(5)
     df_filt = df_raw.copy()
     
-    with f4: 
-        anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
-        
+    with f4: anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
+    
+    # =====================================================================
+    # MEJORA: LÓGICA DE MESES DINÁMICA SEGÚN EL AÑO ACTUAL
+    # =====================================================================
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
         
-        # Filtro dinámico: limita los meses al actual si es el año en curso
+        # Restringe los meses al mes actual si se selecciona el año corriente
         if anio_analisis == hoy.year:
             opciones_meses = list(range(1, hoy.month + 1))
         else:
             opciones_meses = list(range(1, 13))
             
-        meses_sel = st.multiselect(
-            "MESES", 
-            opciones_meses, 
-            default=opciones_meses, 
-            format_func=lambda x: meses_nombres[x]
-        )
-        
+        meses_sel = st.multiselect("MESES", opciones_meses, default=opciones_meses, format_func=lambda x: meses_nombres[x])
         if not meses_sel:
             meses_sel = opciones_meses
             st.warning("Debe seleccionar al menos un mes.")
             
-    mes_max = max(meses_sel)
-    mes_min = min(meses_sel)
+    mes_fin = max(meses_sel)
+    mes_inicio = min(meses_sel)
 
-    ultimo_dia = calendar.monthrange(anio_analisis, mes_max)[1]
-    fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_max:02d}-{ultimo_dia}")
-    fecha_inicio_periodo = pd.to_datetime(f"{anio_analisis}-{mes_min:02d}-01")
+    ultimo_dia = calendar.monthrange(anio_analisis, mes_fin)[1]
+    fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_fin:02d}-{ultimo_dia}")
+    fecha_inicio_periodo = pd.to_datetime(f"{anio_analisis}-{mes_inicio:02d}-01")
 
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
@@ -314,51 +161,34 @@ try:
     posibles_lideres = ['LIDER', 'JEFE', 'SUPERVISOR', 'REPORTA A', 'ENCARGADO', 'GERENTE']
     col_lider = next((c for c in df_filt.columns if c in posibles_lideres), None)
 
-    def get_opts(col, df): 
-        if col in df.columns:
-            return sorted([x for x in df[col].unique() if pd.notna(x)])
-        return []
+    def get_opts(col, df): return sorted([x for x in df[col].unique() if pd.notna(x)]) if col in df.columns else []
 
     with f1:
         sel_emp = st.multiselect("EMPRESA", get_opts('EMPRESA', df_filt), placeholder="Todas")
-        if sel_emp: 
-            df_filt = df_filt[df_filt['EMPRESA'].isin(sel_emp)]
-            
+        if sel_emp: df_filt = df_filt[df_filt['EMPRESA'].isin(sel_emp)]
     with f2:
         sel_loc = st.multiselect("LOCALIDAD", get_opts('LOCALIDAD', df_filt), placeholder="Todas")
-        if sel_loc: 
-            df_filt = df_filt[df_filt['LOCALIDAD'].isin(sel_loc)]
-            
+        if sel_loc: df_filt = df_filt[df_filt['LOCALIDAD'].isin(sel_loc)]
     with f3:
         sel_area = st.multiselect("ÁREA", get_opts('AREA', df_filt), placeholder="Todas")
-        if sel_area: 
-            df_filt = df_filt[df_filt['AREA'].isin(sel_area)]
+        if sel_area: df_filt = df_filt[df_filt['AREA'].isin(sel_area)]
 
     with st.expander("Filtros Avanzados (Sub Área, Puesto, Antigüedad, Líder)", expanded=False):
         fa1, fa2, fa3, fa4 = st.columns(4)
-        
         with fa1:
             sel_subarea = st.multiselect("SUB ÁREA", get_opts('SUB AREA', df_filt), placeholder="Todas")
-            if sel_subarea: 
-                df_filt = df_filt[df_filt['SUB AREA'].isin(sel_subarea)]
-                
+            if sel_subarea: df_filt = df_filt[df_filt['SUB AREA'].isin(sel_subarea)]
         with fa2:
             sel_puesto = st.multiselect("PUESTO", get_opts('PUESTO', df_filt), placeholder="Todos")
-            if sel_puesto: 
-                df_filt = df_filt[df_filt['PUESTO'].isin(sel_puesto)]
-                
+            if sel_puesto: df_filt = df_filt[df_filt['PUESTO'].isin(sel_puesto)]
         with fa3:
             sel_antig = st.multiselect("ANTIGÜEDAD", labels_ant, placeholder="Todas")
-            if sel_antig: 
-                df_filt = df_filt[df_filt['RANGO_ANTIGUEDAD'].isin(sel_antig)]
-                
+            if sel_antig: df_filt = df_filt[df_filt['RANGO_ANTIGUEDAD'].isin(sel_antig)]
         with fa4:
             if col_lider:
                 sel_lider = st.multiselect("LÍDER", get_opts(col_lider, df_filt), placeholder="Todos")
-                if sel_lider: 
-                    df_filt = df_filt[df_filt[col_lider].isin(sel_lider)]
+                if sel_lider: df_filt = df_filt[df_filt[col_lider].isin(sel_lider)]
 
-    # Cálculo de dotación actual para las métricas base
     df_periodo = df_filt[(df_filt['FECHA_ING_DT'] <= fecha_corte) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_corte))].copy()
     dot_actual = len(df_periodo)
 
@@ -366,29 +196,20 @@ try:
     col_nombre = next((c for c in posibles_nombres if c in df_periodo.columns), None)
     
     cols_base = ['CUIL', 'EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'PUESTO', 'CATEGORIA', 'CATEGORIA DE VARIABLE', 'FRECUENCIA DEL VARIABLE', 'FECHA DE INGRESO']
-    if col_nombre: 
-        cols_base.insert(1, col_nombre)
-        
+    if col_nombre: cols_base.insert(1, col_nombre)
     cols_nomina = [c for c in cols_base if c in df_periodo.columns]
     
     def draw_safe_interactive_chart(fig, unique_key):
-        try: 
-            return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
-        except TypeError: 
-            return st.plotly_chart(fig, use_container_width=True)
+        try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
+        except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
-    # Pre-cálculos compartidos de Historia para Evolución
     if len(meses_sel) > 1:
         fecha_inicio_historia = pd.to_datetime(f"{anio_analisis}-01-01")
     else:
         fecha_inicio_historia = pd.to_datetime(f"{anio_analisis - 1}-{mes_fin:02d}-01")
         
     rango_fechas_historia = pd.date_range(start=fecha_inicio_historia, end=fecha_corte, freq='ME')
-    historia_datos = []
-    for f in rango_fechas_historia:
-        dot_fecha = len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])
-        historia_datos.append({'Fecha': f, 'Dotación': dot_fecha})
-        
+    historia_datos = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas_historia]
     df_historia = pd.DataFrame(historia_datos) if historia_datos else pd.DataFrame()
     if not df_historia.empty:
         meses_es = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
@@ -397,42 +218,31 @@ try:
     # =====================================================================
     # 4. PESTAÑAS MAESTRAS
     # =====================================================================
-    st.markdown("<br>", unsafe_allow_html=True)
-    tab_dotacion, tab_rotacion, tab_ausentismo = st.tabs([
-        "📊 Análisis de Dotación y Estructura", 
-        "📉 Análisis de Rotación y Retención", 
-        "🤒 Análisis de Ausentismo"
-    ])
+    tab_dotacion, tab_rotacion = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención"])
 
     # ---------------------------------------------------------------------
     # TAB 1: DOTACIÓN Y ESTRUCTURA
     # ---------------------------------------------------------------------
     with tab_dotacion:
-        # Cálculo Vs Mes Anterior
         mes_ant_calc = mes_fin - 1 if mes_fin > 1 else 12
         anio_ant_calc = anio_analisis if mes_fin > 1 else anio_analisis - 1
         ult_dia_ant = calendar.monthrange(anio_ant_calc, mes_ant_calc)[1]
         fecha_mes_ant = pd.to_datetime(f"{anio_ant_calc}-{mes_ant_calc:02d}-{ult_dia_ant}")
-        
         dot_mes_ant = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_mes_ant) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_mes_ant))])
         dif_mes = int(dot_actual - dot_mes_ant)
         pct_mes = (dif_mes / dot_mes_ant * 100) if dot_mes_ant > 0 else 0
         
-        # Cálculo Vs Año Anterior
         ult_dia_inter = calendar.monthrange(anio_analisis - 1, mes_fin)[1]
         fecha_anio_ant = pd.to_datetime(f"{anio_analisis - 1}-{mes_fin:02d}-{ult_dia_inter}")
-        
         dot_anio_ant = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_anio_ant) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_anio_ant))])
         dif_anio = int(dot_actual - dot_anio_ant)
         pct_anio = (dif_anio / dot_anio_ant * 100) if dot_anio_ant > 0 else 0
 
-        # Cálculo de Período de Prueba
         fecha_limite_prueba = fecha_corte - pd.DateOffset(months=6)
         df_prueba = df_periodo[df_periodo['FECHA_ING_DT'] > fecha_limite_prueba].copy()
         en_prueba = len(df_prueba)
         pct_prueba = (en_prueba / dot_actual * 100) if dot_actual > 0 else 0
 
-        # Render de KPIs
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Dotación Actual", dot_actual)
         c2.metric("Vs. Mes Anterior", f"{dot_actual}", delta=f"{dif_mes} ({pct_mes:+.1f}%)")
@@ -444,14 +254,9 @@ try:
                 df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['FECHA_ING_DT'] + pd.DateOffset(months=6)
                 df_prueba['DÍAS RESTANTES'] = (df_prueba['VENCIMIENTO PRUEBA'] - fecha_corte).dt.days
                 df_prueba['VENCIMIENTO PRUEBA'] = df_prueba['VENCIMIENTO PRUEBA'].dt.strftime('%d/%m/%Y')
-                
                 cols_prueba = [c for c in cols_base + ['VENCIMIENTO PRUEBA', 'DÍAS RESTANTES'] if c in df_prueba.columns]
                 df_prueba_show = df_prueba[cols_prueba].sort_values(by='DÍAS RESTANTES', ascending=True)
-                
-                st.dataframe(
-                    df_prueba_show.style.apply(lambda r: ['background-color: #fee2e2; color: #991b1b; font-weight: bold'] * len(r) if r['DÍAS RESTANTES'] < 30 else [''] * len(r), axis=1), 
-                    use_container_width=True
-                )
+                st.dataframe(df_prueba_show.style.apply(lambda r: ['background-color: #fee2e2; color: #991b1b; font-weight: bold'] * len(r) if r['DÍAS RESTANTES'] < 30 else [''] * len(r), axis=1), use_container_width=True)
 
         with st.expander(f"Nómina completa y Búsqueda: {dot_actual} colaboradores activos", expanded=False):
             if not df_periodo.empty:
@@ -468,60 +273,41 @@ try:
 
         st.divider()
 
-        # Configuración de Filtros Cruzados (Cross-filtering)
-        sel_click_empresa, sel_click_localidad, sel_click_antiguedad = None, None, None
-        sel_click_lider, sel_click_categoria, sel_click_area = None, None, None
+        sel_click_empresa, sel_click_localidad, sel_click_antiguedad, sel_click_lider, sel_click_categoria, sel_click_area = None, None, None, None, None, None
         
         if 'k_emp' in st.session_state and isinstance(st.session_state.k_emp, dict) and st.session_state.k_emp.get('selection', {}).get('points'): 
             sel_click_empresa = st.session_state.k_emp['selection']['points'][0].get('x')
-            
         if 'k_loc' in st.session_state and isinstance(st.session_state.k_loc, dict) and st.session_state.k_loc.get('selection', {}).get('points'): 
             pt = st.session_state.k_loc['selection']['points'][0]
             sel_click_localidad = pt.get('label', pt.get('x'))
-            
         if 'k_area' in st.session_state and isinstance(st.session_state.k_area, dict) and st.session_state.k_area.get('selection', {}).get('points'): 
             pt_a = st.session_state.k_area['selection']['points'][0]
             sel_click_area = pt_a.get('label', pt_a.get('x'))
-            
         if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict) and st.session_state.k_ant.get('selection', {}).get('points'): 
             sel_click_antiguedad = st.session_state.k_ant['selection']['points'][0].get('x')
-            
         if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): 
             sel_click_lider = st.session_state.k_lid['selection']['points'][0].get('y')
-            
         if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): 
             sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('y')
 
         def cross_filter(exclude_chart):
             df_x = df_periodo.copy()
-            if exclude_chart != 'emp' and sel_click_empresa: 
-                df_x = df_x[df_x['EMPRESA'] == sel_click_empresa]
-            if exclude_chart != 'loc' and sel_click_localidad: 
-                df_x = df_x[df_x['LOCALIDAD'] == sel_click_localidad]
-            if exclude_chart != 'area' and sel_click_area: 
-                df_x = df_x[df_x['AREA'] == sel_click_area]
-            if exclude_chart != 'ant' and sel_click_antiguedad: 
-                df_x = df_x[df_x['RANGO_ANTIGUEDAD'] == sel_click_antiguedad]
-            if exclude_chart != 'lid' and sel_click_lider and col_lider: 
-                df_x = df_x[df_x[col_lider] == sel_click_lider]
-            if exclude_chart != 'cat' and sel_click_categoria and 'CATEGORIA' in df_x.columns: 
-                df_x = df_x[df_x['CATEGORIA'] == sel_click_categoria]
+            if exclude_chart != 'emp' and sel_click_empresa: df_x = df_x[df_x['EMPRESA'] == sel_click_empresa]
+            if exclude_chart != 'loc' and sel_click_localidad: df_x = df_x[df_x['LOCALIDAD'] == sel_click_localidad]
+            if exclude_chart != 'area' and sel_click_area: df_x = df_x[df_x['AREA'] == sel_click_area]
+            if exclude_chart != 'ant' and sel_click_antiguedad: df_x = df_x[df_x['RANGO_ANTIGUEDAD'] == sel_click_antiguedad]
+            if exclude_chart != 'lid' and sel_click_lider and col_lider: df_x = df_x[df_x[col_lider] == sel_click_lider]
+            if exclude_chart != 'cat' and sel_click_categoria and 'CATEGORIA' in df_x.columns: df_x = df_x[df_x['CATEGORIA'] == sel_click_categoria]
             return df_x
 
-        # Gráficos Superiores
         col_top1, col_top2 = st.columns([2, 1])
         
         with col_top1:
             st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución de la Dotación</h4>", unsafe_allow_html=True)
             if not df_historia.empty:
                 fig_evol = px.line(df_historia, x='Fecha', y='Dotación', markers=True, text='Dotación')
-                fig_evol.update_traces(
-                    textposition="top center", 
-                    textfont_size=11, 
-                    marker=dict(size=7, color="#1e293b"), 
-                    line=dict(color="#475569", width=2), 
-                    hovertemplate="<b>%{text} Colaboradores</b><extra></extra>"
-                )
+                fig_evol.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#1e293b"), 
+                                       line=dict(color="#475569", width=2), hovertemplate="<b>%{text} Colaboradores</b><extra></extra>")
                 fig_evol.update_xaxes(title="", tickmode='array', tickvals=df_historia['Fecha'], ticktext=df_historia['Mes_Esp'], tickangle=-45, showgrid=False)
                 fig_evol.update_yaxes(title="Colaboradores", showgrid=True, gridcolor='#f1f5f9')
                 fig_evol.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10, l=10, r=10), font=dict(color="#475569"), height=350) 
@@ -543,7 +329,6 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Tres Gráficos Centrales
         col_x1, col_x2, col_x3 = st.columns(3)
         with col_x1:
             st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Estructura por Empresa</h4>", unsafe_allow_html=True)
@@ -574,7 +359,6 @@ try:
                 fig_area.update_layout(font=dict(color="#475569"))
                 draw_safe_interactive_chart(fig_area, "k_area")
 
-        # Gráficos Inferiores
         col_x4, col_x5 = st.columns(2)
         with col_x4:
             st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Distribución por Antigüedad</h4>", unsafe_allow_html=True)
@@ -599,18 +383,15 @@ try:
                     fig_lid.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title="", xaxis_title="Personas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                     draw_safe_interactive_chart(fig_lid, "k_lid")
 
-        # Tabla Interactiva Base
         df_tabla_final = cross_filter('none')
         filtros_activos = [f for f in [f"Empresa: {sel_click_empresa}" if sel_click_empresa else "", f"Localidad: {sel_click_localidad}" if sel_click_localidad else "", f"Área: {sel_click_area}" if sel_click_area else "", f"Antigüedad: {sel_click_antiguedad}" if sel_click_antiguedad else "", f"Líder: {sel_click_lider}" if sel_click_lider else "", f"Categoría: {sel_click_categoria}" if sel_click_categoria else ""] if f]
-        
         if filtros_activos:
             st.markdown(f"<div style='background:#f1f5f9; padding:15px; border-radius:8px; border-left: 4px solid #2563eb;'><b>↳ Nómina Interactiva ({len(df_tabla_final)} filtrados):</b> {' | '.join(filtros_activos)}</div><br>", unsafe_allow_html=True)
             st.dataframe(df_tabla_final[cols_nomina].sort_values(by=[c for c in ['EMPRESA', 'AREA', col_nombre] if c in df_tabla_final.columns]), use_container_width=True)
 
         st.divider()
 
-        # Análisis de Altas y Bajas
-        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ingresos y Egresos</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis Mensual de Ingresos y Egresos</h3>", unsafe_allow_html=True)
         
         if not df_historia.empty:
             opciones_drill = df_historia['Mes_Esp'].tolist()
@@ -646,12 +427,10 @@ try:
                         altas_mes['UBICACION'] = altas_mes['EMPRESA'] + " - " + altas_mes['LOCALIDAD']
                         res_a = altas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
                         res_a['Etiqueta'] = res_a['Cant'].astype(str) + " (" + (res_a['Cant']/res_a['Cant'].sum()*100).round(1).astype(str) + "%)"
-                        
                         fig_a = px.bar(res_a, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
                         fig_a.update_traces(hovertemplate="<b>%{x}</b><br>Altas: %{text}<extra></extra>")
                         fig_a.update_layout(xaxis_title="", yaxis_title="Altas", plot_bgcolor='#ffffff', font=dict(color="#475569"))
                         st.plotly_chart(fig_a, use_container_width=True)
-                        
                         with st.expander("Ver detalle de colaboradores ingresantes"):
                             st.dataframe(altas_mes[[c for c in cols_base if c in altas_mes.columns]], use_container_width=True)
                 
@@ -670,7 +449,6 @@ try:
                             bajas_mes['UBICACION'] = bajas_mes['EMPRESA'] + " - " + bajas_mes['LOCALIDAD']
                             res_b = bajas_mes.groupby(['UBICACION', 'AREA']).size().reset_index(name='Cant')
                             res_b['Etiqueta'] = res_b['Cant'].astype(str) + " (" + (res_b['Cant']/res_b['Cant'].sum()*100).round(1).astype(str) + "%)"
-                            
                             fig_b = px.bar(res_b, x='UBICACION', y='Cant', color='AREA', text='Etiqueta', color_discrete_sequence=paleta_neutra)
                             fig_b.update_traces(hovertemplate="<b>%{x}</b><br>Bajas: %{text}<extra></extra>")
                             fig_b.update_layout(xaxis_title="", yaxis_title="Bajas", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
@@ -689,7 +467,6 @@ try:
 
         st.divider()
 
-        # Análisis de Movimientos Internos
         try:
             df_mov = load_data_mov()
             
@@ -779,3 +556,250 @@ try:
                 st.warning("No se detectó la columna de Fechas en la pestaña de Movimientos.")
         except Exception as e:
             st.error(f"Error al cargar módulo de movimientos. Detalle técnico: {e}")
+
+    # ---------------------------------------------------------------------
+    # TAB 2: ROTACIÓN Y RETENCIÓN
+    # ---------------------------------------------------------------------
+    with tab_rotacion:
+        st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Rotación y Selección</h3>", unsafe_allow_html=True)
+        
+        dot_inicial_rot = len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
+        dot_final_rot = dot_actual 
+        dot_promedio_rot = (dot_inicial_rot + dot_final_rot) / 2
+        dot_promedio_calc = dot_promedio_rot if dot_promedio_rot > 0 else 1
+        
+        bajas_periodo_rot = df_filt[
+            (df_filt['FECHA_EGR_DT'] >= fecha_inicio_periodo) & 
+            (df_filt['FECHA_EGR_DT'] <= fecha_corte) &
+            (df_filt['FECHA_EGR_DT'].dt.month.isin(meses_sel))
+        ].copy()
+        
+        tot_bajas_rot = len(bajas_periodo_rot)
+        rot_total_pct = (tot_bajas_rot / dot_promedio_calc) * 100
+        
+        bajas_voluntarias_rot = bajas_periodo_rot[bajas_periodo_rot['MOTIVO DE EGRESO'].str.contains('RENUNCIA|VOLUNTARI', na=False, case=False)].copy()
+        tot_bajas_vol_rot = len(bajas_voluntarias_rot)
+        rot_vol_pct = (tot_bajas_vol_rot / dot_promedio_calc) * 100
+        
+        if not bajas_voluntarias_rot.empty:
+            bajas_voluntarias_rot['ANTIGUEDAD_DIAS_EGR'] = (bajas_voluntarias_rot['FECHA_EGR_DT'] - bajas_voluntarias_rot['FECHA_ING_DT']).dt.days
+            bajas_vol_temp_rot = bajas_voluntarias_rot[bajas_voluntarias_rot['ANTIGUEDAD_DIAS_EGR'] <= 365].copy()
+            tot_bajas_vol_temp_rot = len(bajas_vol_temp_rot)
+        else:
+            bajas_vol_temp_rot = pd.DataFrame()
+            tot_bajas_vol_temp_rot = 0
+            
+        rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
+
+        # =====================================================================
+        # KPI EFECTIVIDAD SELECCIÓN GLOBAL
+        # =====================================================================
+        if not bajas_periodo_rot.empty:
+            bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
+        else:
+            bajas_prueba = 0
+            
+        sobrevivientes_prueba = len(df_periodo[(fecha_corte - df_periodo['FECHA_ING_DT']).dt.days <= 180])
+        poblacion_en_prueba = sobrevivientes_prueba + bajas_prueba
+        efectividad_sel = 100 - ((bajas_prueba / poblacion_en_prueba * 100) if poblacion_en_prueba > 0 else 0)
+
+        # =====================================================================
+        # KPI EFECTIVIDAD SELECCIÓN COMERCIAL
+        # =====================================================================
+        if not bajas_periodo_rot.empty:
+            bajas_prueba_com = len(bajas_periodo_rot[(bajas_periodo_rot['AREA'] == 'COMERCIAL') & ((bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180)])
+        else:
+            bajas_prueba_com = 0
+            
+        sobrevivientes_prueba_com = len(df_periodo[((fecha_corte - df_periodo['FECHA_ING_DT']).dt.days <= 180) & (df_periodo['AREA'] == 'COMERCIAL')])
+        poblacion_en_prueba_com = sobrevivientes_prueba_com + bajas_prueba_com
+        efectividad_sel_com = 100 - ((bajas_prueba_com / poblacion_en_prueba_com * 100) if poblacion_en_prueba_com > 0 else 0)
+
+        # =====================================================================
+        # CÁLCULOS DE STAFF Y OPERACIÓN
+        # =====================================================================
+        df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
+        dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
+        dot_fin_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_corte) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] > fecha_corte))])
+        prom_staff = (dot_ini_staff + dot_fin_staff) / 2
+        prom_staff_calc = prom_staff if prom_staff > 0 else 1
+        bajas_staff = len(bajas_periodo_rot[bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
+        rot_staff_pct = (bajas_staff / prom_staff_calc) * 100
+        
+        df_op = df_filt[~df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
+        dot_ini_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
+        dot_fin_op = len(df_op[(df_op['FECHA_ING_DT'] <= fecha_corte) & ((df_op['FECHA_EGR_DT'].isna()) | (df_op['FECHA_EGR_DT'] > fecha_corte))])
+        prom_op = (dot_ini_op + dot_fin_op) / 2
+        prom_op_calc = prom_op if prom_op > 0 else 1
+        bajas_op = len(bajas_periodo_rot[~bajas_periodo_rot['EMPRESA'].str.contains('LA LUZ', na=False, case=False)])
+        rot_op_pct = (bajas_op / prom_op_calc) * 100
+
+        # RENDER 5 COLUMNAS
+        cr1, cr2, cr3, cr_new, cr_com = st.columns(5)
+        
+        cr1.metric("Rotación Total", f"{rot_total_pct:.1f}%", f"{tot_bajas_rot} egresos")
+        cr2.metric("Rotación Voluntaria", f"{rot_vol_pct:.1f}%", f"{tot_bajas_vol_rot} renuncias", delta_color="inverse")
+        cr3.metric("Rot. Voluntaria Temprana", f"{rot_vol_temp_pct:.1f}%", f"{tot_bajas_vol_temp_rot} renuncias < 1 año", delta_color="inverse")
+        
+        def get_efectividad_html(label, score, bajas, pob):
+            color = "#15803d" if score >= 90 else "#dc2626"
+            bg = "#f0fdf4" if score >= 90 else "#fef2f2"
+            return f"""
+            <div style='background-color: {bg}; border: 1px solid {color}; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 100%; min-height: 115px; display: flex; flex-direction: column; justify-content: center;'>
+                <div style='color: #64748b; font-weight: 600; font-size: 13px; padding-bottom: 4px;'>{label}</div>
+                <div style='color: {color}; font-weight: 700; font-size: 28px; line-height: 1.1;'>{score:.1f}%</div>
+                <div style='color: {color}; font-size: 12px; font-weight: 500; padding-top: 4px;'>Obj: ≥90% | Bajas: {bajas} de {pob}</div>
+            </div>
+            """
+
+        with cr_new:
+            st.markdown(get_efectividad_html("Efectividad Selección", efectividad_sel, bajas_prueba, poblacion_en_prueba), unsafe_allow_html=True)
+            
+        with cr_com:
+            st.markdown(get_efectividad_html("Efec. Sel. Comercial", efectividad_sel_com, bajas_prueba_com, poblacion_en_prueba_com), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        cr4, cr5, cr6 = st.columns(3)
+        cr4.metric("Dotación Promedio Global", f"{dot_promedio_rot:.1f}", f"Inicial: {dot_inicial_rot} | Final: {dot_final_rot}", delta_color="off")
+        cr5.metric("Rotación de STAFF (La Luz)", f"{rot_staff_pct:.1f}%", f"{bajas_staff} bajas (Promedio: {prom_staff:.1f})")
+        cr6.metric("Rotación de OPERACIÓN", f"{rot_op_pct:.1f}%", f"{bajas_op} bajas (Promedio: {prom_op:.1f})")
+        
+        st.divider()
+        
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Rotación</h4>", unsafe_allow_html=True)
+        if not df_historia.empty:
+            tasas_rotacion_hist = []
+            tasas_vol_hist = []
+            tasas_temprana_hist = []
+            
+            for f in df_historia['Fecha']:
+                mes_f = f.month
+                ano_f = f.year
+                ini_mes_f = pd.to_datetime(f"{ano_f}-{mes_f:02d}-01")
+                
+                d_ini = len(df_filt[(df_filt['FECHA_ING_DT'] <= ini_mes_f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= ini_mes_f))])
+                d_fin = len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])
+                prom = (d_ini + d_fin) / 2
+                prom_c = prom if prom > 0 else 1
+                
+                bajas_m = df_filt[(df_filt['FECHA_EGR_DT'] >= ini_mes_f) & (df_filt['FECHA_EGR_DT'] <= f)]
+                b_tot = len(bajas_m)
+                
+                bajas_v = bajas_m[bajas_m['MOTIVO DE EGRESO'].str.contains('RENUNCIA|VOLUNTARI', na=False, case=False)]
+                b_vol = len(bajas_v)
+                
+                bajas_v_temp = bajas_v[(bajas_v['FECHA_EGR_DT'] - bajas_v['FECHA_ING_DT']).dt.days <= 365]
+                b_temp = len(bajas_v_temp)
+                
+                tasas_rotacion_hist.append((b_tot / prom_c) * 100)
+                tasas_vol_hist.append((b_vol / prom_c) * 100)
+                tasas_temprana_hist.append((b_temp / prom_c) * 100)
+                
+            df_hist_rot = df_historia.copy()
+            df_hist_rot['TASA_TOTAL'] = tasas_rotacion_hist
+            df_hist_rot['TASA_VOL'] = tasas_vol_hist
+            df_hist_rot['TASA_TEMP'] = tasas_temprana_hist
+            
+            tab_rot_tot, tab_rot_vol, tab_rot_temp = st.tabs(["Rotación Total", "Rotación Voluntaria", "Rotación Temprana (< 1 año)"])
+            
+            with tab_rot_tot:
+                fig_rt = px.line(df_hist_rot, x='Fecha', y='TASA_TOTAL', markers=True, text='TASA_TOTAL')
+                fig_rt.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', marker=dict(size=7, color="#b91c1c"), line=dict(color="#ef4444", width=2), hovertemplate="<b>%{y:.1f}% Rotación Total</b><extra></extra>")
+                fig_rt.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
+                fig_rt.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
+                fig_rt.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
+                st.plotly_chart(fig_rt, use_container_width=True)
+                
+            with tab_rot_vol:
+                fig_rv = px.line(df_hist_rot, x='Fecha', y='TASA_VOL', markers=True, text='TASA_VOL')
+                fig_rv.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', marker=dict(size=7, color="#c2410c"), line=dict(color="#f97316", width=2), hovertemplate="<b>%{y:.1f}% Rotación Voluntaria</b><extra></extra>")
+                fig_rv.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
+                fig_rv.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
+                fig_rv.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
+                st.plotly_chart(fig_rv, use_container_width=True)
+                
+            with tab_rot_temp:
+                fig_rtemp = px.line(df_hist_rot, x='Fecha', y='TASA_TEMP', markers=True, text='TASA_TEMP')
+                fig_rtemp.update_traces(textposition="top center", textfont_size=11, texttemplate='%{text:.1f}%', marker=dict(size=7, color="#a16207"), line=dict(color="#eab308", width=2), hovertemplate="<b>%{y:.1f}% Rotación Temprana</b><extra></extra>")
+                fig_rtemp.update_xaxes(title="", tickmode='array', tickvals=df_hist_rot['Fecha'], ticktext=df_hist_rot['Mes_Esp'], tickangle=-45, showgrid=False)
+                fig_rtemp.update_yaxes(title="Tasa (%)", showgrid=True, gridcolor='#f1f5f9')
+                fig_rtemp.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', margin=dict(b=60, t=10), font=dict(color="#475569"), height=250) 
+                st.plotly_chart(fig_rtemp, use_container_width=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        sel_rot_tipo = None
+        if 'k_rot_tipo' in st.session_state and isinstance(st.session_state.k_rot_tipo, dict):
+            points = st.session_state.k_rot_tipo.get('selection', {}).get('points', [])
+            if points: sel_rot_tipo = points[0].get('label')
+            
+        sel_rot_area = None
+        if 'k_rot_area' in st.session_state and isinstance(st.session_state.k_rot_area, dict):
+            points = st.session_state.k_rot_area.get('selection', {}).get('points', [])
+            if points: sel_rot_area = points[0].get('y')
+
+        col_r1, col_r2 = st.columns(2)
+        
+        with col_r1:
+            st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Composición de la Rotación</h4>", unsafe_allow_html=True)
+            if tot_bajas_rot > 0:
+                bajas_periodo_rot['TIPO_BAJA'] = np.where(bajas_periodo_rot['MOTIVO DE EGRESO'].str.contains('RENUNCIA|VOLUNTARI', na=False, case=False), 'Renuncia Voluntaria', 'Involuntaria / Otros Motivos')
+                res_tipo = bajas_periodo_rot.groupby('TIPO_BAJA').size().reset_index(name='CANTIDAD')
+                fig_tipo = px.pie(res_tipo, names='TIPO_BAJA', values='CANTIDAD', hole=0.4, color_discrete_sequence=['#ef4444', paleta_neutra[2]])
+                fig_tipo.update_traces(textinfo='value+percent', hovertemplate="<b>%{label}</b><br>Bajas: %{value} (%{percent})<extra></extra>")
+                fig_tipo.update_layout(font=dict(color="#475569"), margin=dict(t=10))
+                draw_safe_interactive_chart(fig_tipo, "k_rot_tipo")
+            else:
+                st.info("No se registraron bajas en el periodo para analizar su composición.")
+                
+        with col_r2:
+            st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top Áreas con Mayor Fuga Voluntaria</h4>", unsafe_allow_html=True)
+            if tot_bajas_vol_rot > 0:
+                res_area_vol = bajas_voluntarias_rot.groupby('AREA').size().reset_index(name='CANTIDAD').sort_values('CANTIDAD', ascending=False).head(7)
+                fig_area_vol = px.bar(res_area_vol, x='CANTIDAD', y='AREA', orientation='h', text='CANTIDAD', color_discrete_sequence=[paleta_neutra[1]])
+                fig_area_vol.update_traces(hovertemplate="<b>Área: %{y}</b><br>Renuncias: %{text}<extra></extra>")
+                fig_area_vol.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="Renuncias", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
+                draw_safe_interactive_chart(fig_area_vol, "k_rot_area")
+            else:
+                st.info("No se registraron renuncias voluntarias en el periodo.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>↳ Detalle Interactivo de Bajas</h4>", unsafe_allow_html=True)
+
+        if tot_bajas_rot > 0:
+            df_show_rot = bajas_periodo_rot.copy()
+            filtros_rot = []
+            
+            if sel_rot_tipo:
+                df_show_rot = df_show_rot[df_show_rot['TIPO_BAJA'] == sel_rot_tipo]
+                filtros_rot.append(f"Tipo: {sel_rot_tipo}")
+            if sel_rot_area:
+                df_show_rot = df_show_rot[df_show_rot['AREA'] == sel_rot_area]
+                filtros_rot.append(f"Área: {sel_rot_area}")
+
+            if filtros_rot:
+                st.markdown(f"<div style='background:#fef2f2; padding:15px; border-radius:8px; border-left: 4px solid #ef4444; margin-bottom:15px;'><b>Filtro activo ({len(df_show_rot)} resultados):</b> {' | '.join(filtros_rot)}</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para filtrar esta tabla y auditar detalles específicos.</p>", unsafe_allow_html=True)
+
+            if not df_show_rot.empty:
+                def formatear_antiguedad(dias):
+                    if pd.isna(dias) or dias < 0: return "Desconocida"
+                    anios = int(dias // 365.25)
+                    meses = int((dias % 365.25) // 30.416)
+                    res = []
+                    if anios > 0: res.append(f"{anios} año{'s' if anios > 1 else ''}")
+                    if meses > 0: res.append(f"{meses} mes{'es' if meses > 1 else ''}")
+                    if not res: return "Menos de 1 mes"
+                    return " y ".join(res)
+                
+                df_show_rot['ANTIGÜEDAD'] = (df_show_rot['FECHA_EGR_DT'] - df_show_rot['FECHA_ING_DT']).dt.days.apply(formatear_antiguedad)
+                df_show_rot['FECHA_EGR_STR'] = df_show_rot['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
+                
+                cols_rot_show = [c for c in [col_nombre, 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'ANTIGÜEDAD', 'FECHA_EGR_STR', 'MOTIVO DE EGRESO'] if c in df_show_rot.columns]
+                st.dataframe(df_show_rot[cols_rot_show].rename(columns={'FECHA_EGR_STR': 'FECHA EGRESO'}), use_container_width=True)
+            else:
+                st.info("No hay registros que coincidan con la selección de los gráficos.")
+
+except Exception as e:
+    st.error(f"Error técnico general: {e}")
