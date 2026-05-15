@@ -70,12 +70,10 @@ def load_data():
     })
     df['FECHA_ING_DT'] = pd.to_datetime(df['FECHA DE INGRESO'], dayfirst=True, errors='coerce')
     df['FECHA_EGR_DT'] = pd.to_datetime(df['FECHA DE EGRESO'], dayfirst=True, errors='coerce')
-    
     cols_txt = ['EMPRESA', 'LOCALIDAD', 'AREA', 'SUB AREA', 'ESTADO', 'PUESTO', 'MOTIVO DE EGRESO', 'CATEGORIA', 'CATEGORIA DE VARIABLE', 'FRECUENCIA DEL VARIABLE']
     for c in cols_txt:
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', '0', ''], np.nan)
-            
     if 'PUESTO' in df.columns: df = df[~df['PUESTO'].str.contains('PRACTICANTE', na=False)]
     return df
 
@@ -83,7 +81,6 @@ def load_data():
 def load_data_mov():
     df = pd.read_csv(CSV_URL_MOVIMIENTOS, dtype=str)
     df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
-    
     mapeo = {}
     for col in df.columns:
         if 'FECHA' in col and ('MOV' in col or 'EFE' in col): mapeo[col] = 'FECHA_MOV'
@@ -99,7 +96,6 @@ def load_data_mov():
             elif 'LOC' in col: mapeo[col] = 'LOC_DESTINO'
             elif 'AREA' in col or 'ÁREA' in col: mapeo[col] = 'AREA_DESTINO'
             elif 'PUEST' in col: mapeo[col] = 'PUESTO_DESTINO'
-
     df = df.rename(columns=mapeo)
     if 'FECHA_MOV' in df.columns:
         df['FECHA_MOV_DT'] = pd.to_datetime(df['FECHA_MOV'], dayfirst=True, errors='coerce')
@@ -109,13 +105,13 @@ def load_data_mov():
 def load_data_ausentismo():
     try:
         df = pd.read_csv(CSV_URL_AUSENTISMO, dtype=str)
-        df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
-        
+        df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A').replace('É','E') for c in df.columns]
         mapeo = {}
+        # Nuevo mapeo adaptado a las columnas específicas de Hechos_Ausentismo
         for col in df.columns:
-            if 'FECHA' in col and ('INICIO' in col or 'AUS' in col): mapeo[col] = 'FECHA_AUSENTISMO'
-            elif 'MOTIVO' in col or 'TIPO' in col or 'RAZON' in col: mapeo[col] = 'MOTIVO_AUSENCIA'
-            elif 'DIAS' in col or 'DÍAS' in col or 'CANTIDAD' in col: mapeo[col] = 'DIAS_AUSENCIA'
+            if 'DESDE' in col or ('FECHA' in col and ('INICIO' in col or 'AUS' in col)): mapeo[col] = 'FECHA_AUSENTISMO'
+            elif 'LICENCIA' in col or 'MOTIVO' in col or 'RAZON' in col: mapeo[col] = 'MOTIVO_AUSENCIA'
+            elif 'TIEMPO' in col or 'DIAS' in col or 'DÍAS' in col or 'CANTIDAD' in col: mapeo[col] = 'DIAS_AUSENCIA'
             elif 'NOMBRE' in col or 'COLAB' in col or 'APELLIDO' in col: mapeo[col] = 'NOMBRE'
             elif 'EMP' in col: mapeo[col] = 'EMPRESA'
             elif 'LOC' in col: mapeo[col] = 'LOCALIDAD'
@@ -124,6 +120,7 @@ def load_data_ausentismo():
 
         df = df.rename(columns=mapeo)
         
+        # Resguardo: si no encontró FECHA_AUSENTISMO, busca cualquier columna que diga FECHA
         if 'FECHA_AUSENTISMO' not in df.columns:
             for col in df.columns:
                 if 'FECHA' in col:
@@ -134,7 +131,8 @@ def load_data_ausentismo():
             df['FECHA_AUS_DT'] = pd.to_datetime(df['FECHA_AUSENTISMO'], dayfirst=True, errors='coerce')
             
         if 'DIAS_AUSENCIA' in df.columns:
-            df['DIAS_AUSENCIA'] = pd.to_numeric(df['DIAS_AUSENCIA'].str.replace(',','.'), errors='coerce').fillna(1)
+            # Extrae solo los números en caso de que diga "5 días", y reemplaza comas por puntos
+            df['DIAS_AUSENCIA'] = pd.to_numeric(df['DIAS_AUSENCIA'].astype(str).str.replace(',','.').str.extract(r'(\d+\.?\d*)', expand=False), errors='coerce').fillna(1)
         else:
             df['DIAS_AUSENCIA'] = 1 
             
@@ -172,8 +170,10 @@ try:
     with f4: anio_analisis = st.selectbox("AÑO", [2026, 2025, 2024], index=0)
     with f5: 
         meses_nombres = {1: 'ENE', 2: 'FEB', 3: 'MAR', 4: 'ABR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DIC'}
-        if anio_analisis == hoy.year: opciones_meses = list(range(1, hoy.month + 1))
-        else: opciones_meses = list(range(1, 13))
+        if anio_analisis == hoy.year:
+            opciones_meses = list(range(1, hoy.month + 1))
+        else:
+            opciones_meses = list(range(1, 13))
             
         meses_sel = st.multiselect("MESES", opciones_meses, default=opciones_meses, format_func=lambda x: meses_nombres[x])
         if not meses_sel:
@@ -250,7 +250,7 @@ try:
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_es) + " " + df_historia['Fecha'].dt.year.astype(str)
 
     # =====================================================================
-    # 4. PESTAÑAS MAESTRAS (AHORA SON 3)
+    # 4. PESTAÑAS MAESTRAS
     # =====================================================================
     st.markdown("<br>", unsafe_allow_html=True)
     tab_dotacion, tab_rotacion, tab_ausentismo = st.tabs(["📊 Análisis de Dotación y Estructura", "📉 Análisis de Rotación y Retención", "🤒 Análisis de Ausentismo"])
@@ -626,12 +626,7 @@ try:
             
         rot_vol_temp_pct = (tot_bajas_vol_temp_rot / dot_promedio_calc) * 100
 
-        ingresos_globales = df_filt[
-            (df_filt['FECHA_ING_DT'] >= fecha_inicio_periodo) & 
-            (df_filt['FECHA_ING_DT'] <= fecha_corte) &
-            (df_filt['FECHA_ING_DT'].dt.month.isin(meses_sel))
-        ]
-        
+        # KPI EFECTIVIDAD SELECCIÓN GLOBAL
         if not bajas_periodo_rot.empty:
             bajas_prueba = len(bajas_periodo_rot[(bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180])
         else:
@@ -641,6 +636,7 @@ try:
         poblacion_en_prueba = sobrevivientes_prueba + bajas_prueba
         efectividad_sel = 100 - ((bajas_prueba / poblacion_en_prueba * 100) if poblacion_en_prueba > 0 else 0)
 
+        # KPI EFECTIVIDAD SELECCIÓN COMERCIAL
         if not bajas_periodo_rot.empty:
             bajas_prueba_com = len(bajas_periodo_rot[(bajas_periodo_rot['AREA'] == 'COMERCIAL') & ((bajas_periodo_rot['FECHA_EGR_DT'] - bajas_periodo_rot['FECHA_ING_DT']).dt.days <= 180)])
         else:
@@ -650,6 +646,7 @@ try:
         poblacion_en_prueba_com = sobrevivientes_prueba_com + bajas_prueba_com
         efectividad_sel_com = 100 - ((bajas_prueba_com / poblacion_en_prueba_com * 100) if poblacion_en_prueba_com > 0 else 0)
 
+        # CÁLCULOS DE STAFF Y OPERACIÓN
         df_staff = df_filt[df_filt['EMPRESA'].str.contains('LA LUZ', na=False, case=False)]
         dot_ini_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] >= fecha_inicio_periodo))])
         dot_fin_staff = len(df_staff[(df_staff['FECHA_ING_DT'] <= fecha_corte) & ((df_staff['FECHA_EGR_DT'].isna()) | (df_staff['FECHA_EGR_DT'] > fecha_corte))])
@@ -833,7 +830,7 @@ try:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
 
     # ---------------------------------------------------------------------
-    # TAB 3: AUSENTISMO (NUEVO)
+    # TAB 3: AUSENTISMO
     # ---------------------------------------------------------------------
     with tab_ausentismo:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Indicadores Clave de Ausentismo</h3>", unsafe_allow_html=True)
@@ -841,24 +838,18 @@ try:
             df_aus = load_data_ausentismo()
             if not df_aus.empty and 'FECHA_AUS_DT' in df_aus.columns:
                 
-                # Filtrar Ausentismo por el periodo seleccionado
                 df_aus_periodo = df_aus[
                     (df_aus['FECHA_AUS_DT'].dt.year == anio_analisis) & 
                     (df_aus['FECHA_AUS_DT'].dt.month.isin(meses_sel))
                 ].copy()
                 
-                # Aplicar los filtros globales al ausentismo (Empresa, Sede, Area)
-                if sel_emp and 'EMPRESA' in df_aus_periodo.columns:
-                    df_aus_periodo = df_aus_periodo[df_aus_periodo['EMPRESA'].isin(sel_emp)]
-                if sel_loc and 'LOCALIDAD' in df_aus_periodo.columns:
-                    df_aus_periodo = df_aus_periodo[df_aus_periodo['LOCALIDAD'].isin(sel_loc)]
-                if sel_area and 'AREA' in df_aus_periodo.columns:
-                    df_aus_periodo = df_aus_periodo[df_aus_periodo['AREA'].isin(sel_area)]
+                if sel_emp and 'EMPRESA' in df_aus_periodo.columns: df_aus_periodo = df_aus_periodo[df_aus_periodo['EMPRESA'].isin(sel_emp)]
+                if sel_loc and 'LOCALIDAD' in df_aus_periodo.columns: df_aus_periodo = df_aus_periodo[df_aus_periodo['LOCALIDAD'].isin(sel_loc)]
+                if sel_area and 'AREA' in df_aus_periodo.columns: df_aus_periodo = df_aus_periodo[df_aus_periodo['AREA'].isin(sel_area)]
                 
                 total_ausencias = len(df_aus_periodo)
                 total_dias_ausentes = df_aus_periodo['DIAS_AUSENCIA'].sum() if 'DIAS_AUSENCIA' in df_aus_periodo.columns else total_ausencias
                 
-                # Cálculo de Índice (Asumiendo 22 días laborables por mes por la dotación promedio)
                 meses_contados = len(meses_sel)
                 dot_promedio_aus = ((len(df_filt[(df_filt['FECHA_ING_DT'] <= fecha_inicio_periodo) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] >= fecha_inicio_periodo))]) + dot_actual) / 2) if dot_actual > 0 else 1
                 dias_teoricos_trabajados = dot_promedio_aus * 22 * meses_contados
@@ -922,10 +913,10 @@ try:
                     st.plotly_chart(fig_evol_aus, use_container_width=True)
 
                 with st.expander("↳ Ver Nómina Interactiva de Ausentismo"):
-                    df_aus_periodo['FECHA_AUS_STR'] = df_aus_periodo['FECHA_AUS_DT'].dt.strftime('%d/%m/%Y')
-                    cols_aus = [c for c in ['FECHA_AUS_STR', 'NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'MOTIVO_AUSENCIA', 'DIAS_AUSENCIA'] if c in df_aus_periodo.columns]
-                    st.dataframe(df_aus_periodo.sort_values(by='FECHA_AUS_DT', ascending=False)[cols_aus].rename(columns={'FECHA_AUS_STR': 'FECHA AUSENTISMO'}), use_container_width=True)
-
+                    if not df_aus_periodo.empty:
+                        df_aus_periodo['FECHA_AUS_STR'] = df_aus_periodo['FECHA_AUS_DT'].dt.strftime('%d/%m/%Y')
+                        cols_aus = [c for c in ['FECHA_AUS_STR', 'NOMBRE', 'EMPRESA', 'LOCALIDAD', 'AREA', 'PUESTO', 'MOTIVO_AUSENCIA', 'DIAS_AUSENCIA'] if c in df_aus_periodo.columns]
+                        st.dataframe(df_aus_periodo.sort_values(by='FECHA_AUS_DT', ascending=False)[cols_aus].rename(columns={'FECHA_AUS_STR': 'FECHA AUSENTISMO'}), use_container_width=True)
             else:
                 st.info("No se detectó columna de fechas o datos en la base de ausentismo para analizar.")
         except Exception as e:
