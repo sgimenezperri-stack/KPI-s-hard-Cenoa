@@ -117,21 +117,17 @@ def load_data_aus():
             df['AREA'] = df.iloc[:, 4].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan)
             df['LICENCIA'] = df.iloc[:, 5].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], 'NO DECLARADO')
             
-            # Buscar fecha en la columna G (índice 6)
             df['FECHA_AUS_DT'] = pd.to_datetime(df.iloc[:, 6], dayfirst=True, errors='coerce')
             
-            # Si la columna G está totalmente vacía de fechas, probar con la H (índice 7)
             if df['FECHA_AUS_DT'].isna().all() and len(df.columns) >= 8:
                 df['FECHA_AUS_DT'] = pd.to_datetime(df.iloc[:, 7], dayfirst=True, errors='coerce')
                 
-        # Días
         col_dias = next((c for c in df.columns if 'DIAS' in c or 'CANTIDAD' in c), None)
         if col_dias: 
             df['DIAS_AUS'] = pd.to_numeric(df[col_dias], errors='coerce').fillna(1)
         else: 
             df['DIAS_AUS'] = 1
             
-        # Nombre
         col_nombre = next((c for c in df.columns if 'NOMBRE' in c or 'COLAB' in c or 'APELLIDO' in c), None)
         if not col_nombre and len(df.columns) > 1: col_nombre = df.columns[1]
         df['NOMBRE_AUS'] = df[col_nombre] if col_nombre else 'DESCONOCIDO'
@@ -176,7 +172,6 @@ try:
     fecha_corte = pd.to_datetime(f"{anio_analisis}-{mes_fin:02d}-{ultimo_dia}")
     fecha_inicio_periodo = pd.to_datetime(f"{anio_analisis}-{mes_inicio:02d}-01")
 
-    # Lógica de Antigüedad
     df_filt['ANTIGUEDAD_AÑOS'] = (fecha_corte - df_filt['FECHA_ING_DT']).dt.days / 365.25
     bins_ant = [-1, 1, 3, 5, 10, 100]
     labels_ant = ['< 1 año', '1 a 3 años', '3 a 5 años', '5 a 10 años', '+ 10 años']
@@ -213,7 +208,6 @@ try:
                 sel_lider = st.multiselect("LÍDER", get_opts(col_lider, df_filt), placeholder="Todos")
                 if sel_lider: df_filt = df_filt[df_filt[col_lider].isin(sel_lider)]
 
-    # Cálculo de Dotación en el periodo
     df_periodo = df_filt[(df_filt['FECHA_ING_DT'] <= fecha_corte) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > fecha_corte))].copy()
     dot_actual = len(df_periodo)
 
@@ -519,9 +513,13 @@ try:
                     (df_mov['FECHA_MOV_DT'].dt.month.isin(meses_sel))
                 ].copy()
                 
+                # NUEVO FILTRO: Aplicar filtros globales de dotación a los movimientos (Vinculado)
+                if 'NOMBRE' in df_mov_periodo.columns and col_nombre and col_nombre in df_filt.columns:
+                    df_mov_periodo = df_mov_periodo[df_mov_periodo['NOMBRE'].isin(df_filt[col_nombre])]
+                
                 if not df_mov_periodo.empty:
                     st.markdown(f"<h3 style='font-size: 18px; font-weight: 600;'>Movilidad Interna y Desarrollo de Talento</h3>", unsafe_allow_html=True)
-                    st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en el gráfico de torta para auditar los resultados de las evaluaciones de potencial.</p>", unsafe_allow_html=True)
+                    st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Los movimientos mostrados corresponden a la dotación filtrada en el panel superior. Haz clic en el gráfico de torta para auditar los resultados de las evaluaciones de potencial de ese grupo.</p>", unsafe_allow_html=True)
 
                     total_movs = len(df_mov_periodo)
                     df_mov_kpi = df_mov_periodo.merge(df_raw[[col_nombre, 'FECHA_EGR_DT']], left_on='NOMBRE', right_on=col_nombre, how='left')
@@ -532,7 +530,7 @@ try:
                     
                     if bajas_temp_mov > 0:
                         pct_fracaso = (bajas_temp_mov / total_movs) * 100
-                        st.markdown(f"<div style='background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #b45309; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ <b>Riesgo de Retención post-Movimiento:</b> {bajas_temp_mov} de los {total_movs} colaboradores movidos/promovidos (<b>{pct_fracaso:.1f}%</b>) se dieron de baja antes de cumplir 12 meses en su nuevo rol.</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #b45309; font-weight: 600; font-size: 14px; margin: 0;'>⚠️ <b>Riesgo de Retención post-Movimiento:</b> {bajas_temp_mov} de los {total_movs} colaboradores movidos/promovidos en el filtro actual (<b>{pct_fracaso:.1f}%</b>) se dieron de baja antes de cumplir 12 meses en su nuevo rol.</p></div>", unsafe_allow_html=True)
                         
                         with st.expander("Ver colaboradores que se dieron de baja tras movimiento/promoción", expanded=False):
                             df_bajas_riesgo['FECHA_EGR'] = df_bajas_riesgo['FECHA_EGR_DT'].dt.strftime('%d/%m/%Y')
@@ -540,7 +538,7 @@ try:
                             cols_show_riesgo = ['NOMBRE', 'TIPO_MOV', 'FECHA_MOV_STR', 'PUESTO_ORIGEN', 'PUESTO_DESTINO', 'FECHA_EGR', 'DIAS_POST_MOV']
                             st.dataframe(df_bajas_riesgo[cols_show_riesgo].rename(columns={'FECHA_MOV_STR': 'FECHA MOV.', 'FECHA_EGR': 'FECHA EGRESO', 'DIAS_POST_MOV': 'DÍAS DURACIÓN'}).sort_values('DÍAS DURACIÓN'), use_container_width=True)
                     else:
-                        st.markdown(f"<div style='background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #15803d; font-weight: 600; font-size: 14px; margin: 0;'>✅ Excelente retención: Ningún talento promovido o reubicado en este periodo se ha dado de baja.</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 4px; margin-bottom: 15px;'><p style='color: #15803d; font-weight: 600; font-size: 14px; margin: 0;'>✅ Excelente retención: Ningún talento promovido o reubicado en este periodo (y bajo estos filtros) se ha dado de baja.</p></div>", unsafe_allow_html=True)
 
                     sel_click_tipo_mov = None
                     if 'k_tipo_mov' in st.session_state and isinstance(st.session_state.k_tipo_mov, dict) and st.session_state.k_tipo_mov.get('selection', {}).get('points'):
@@ -590,11 +588,11 @@ try:
                         
                         if sel_click_tipo_mov:
                             df_show_mov = df_show_mov[df_show_mov['TIPO_MOV'] == sel_click_tipo_mov]
-                            st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro activo:</b> Mostrando solo {sel_click_tipo_mov}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro de torta activo:</b> Mostrando solo {sel_click_tipo_mov}</div>", unsafe_allow_html=True)
                             
                         st.dataframe(df_show_mov.sort_values(by='FECHA_MOV_DT', ascending=False)[cols_mov], use_container_width=True)
                 else:
-                    st.info("No hay registros de movimientos internos en el periodo seleccionado.")
+                    st.info("No hay registros de movimientos internos para la dotación filtrada en el periodo seleccionado.")
             else:
                 st.warning("No se detectó la columna de Fechas en la pestaña de Movimientos.")
         except Exception as e:
@@ -845,7 +843,7 @@ try:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
 
     # ---------------------------------------------------------------------
-    # TAB 3: AUSENTISMO Y NOVEDADES (DÍAS HÁBILES Y FÓRMULA EXACTA)
+    # TAB 3: AUSENTISMO Y NOVEDADES
     # ---------------------------------------------------------------------
     with tab_ausentismo:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ausentismo y Novedades</h3>", unsafe_allow_html=True)
@@ -894,7 +892,7 @@ try:
                     # KPI GIGANTE: FÓRMULA DE TASA DE AUSENTISMO
                     # ---------------------------------------------------------
                     # A. Denominador (Días Teóricos) utilizando Maestra_Empleados (df_filt)
-                    df_filt_kpi = df_filt.copy() # df_filt es Maestra_Empleados
+                    df_filt_kpi = df_filt.copy()
                     if sel_aus_emp: df_filt_kpi = df_filt_kpi[df_filt_kpi['EMPRESA'] == sel_aus_emp]
                     if sel_aus_area: df_filt_kpi = df_filt_kpi[df_filt_kpi['AREA'] == sel_aus_area]
                     
@@ -918,11 +916,11 @@ try:
                     tasa_ausentismo = (total_dias / dias_teoricos) * 100 if dias_teoricos > 0 else 0
                     
                     if tasa_ausentismo <= 3.0:
-                        c_color, bg_color = "#15803d", "#f0fdf4" # Verde (Saludable)
+                        c_color, bg_color = "#15803d", "#f0fdf4" # Verde
                     elif tasa_ausentismo <= 5.0:
-                        c_color, bg_color = "#b45309", "#fffbeb" # Naranja (Precaución)
+                        c_color, bg_color = "#b45309", "#fffbeb" # Naranja
                     else:
-                        c_color, bg_color = "#dc2626", "#fef2f2" # Rojo (Alerta)
+                        c_color, bg_color = "#dc2626", "#fef2f2" # Rojo
                         
                     html_kpi_aus = f"""
                     <div style='background-color: {bg_color}; border: 1px solid {c_color}; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 100%; min-height: 115px; display: flex; flex-direction: column; justify-content: center;'>
@@ -991,15 +989,44 @@ try:
                     else:
                         st.markdown("<p style='font-size: 13px; color: #64748b;'>💡 <b>Consejo:</b> Haz clic en los gráficos superiores para recalcular la Tasa de Ausentismo y filtrar la tabla inferior.</p>", unsafe_allow_html=True)
                         
-                    st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Días Perdidos</h4>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Evolución Mensual de Días Perdidos y Tasa (%)</h4>", unsafe_allow_html=True)
                     
                     if not df_aus_filtered.empty:
-                        res_evol_aus = df_aus_filtered.groupby(df_aus_filtered['FECHA_AUS_DT'].dt.to_period('M')).agg({'DIAS_AUS':'sum'}).reset_index()
-                        res_evol_aus['MES_STR'] = res_evol_aus['FECHA_AUS_DT'].dt.month.map(meses_nombres) + " " + res_evol_aus['FECHA_AUS_DT'].dt.year.astype(str)
+                        # Novedad: Recálculo mes a mes para la etiqueta dinámica (Días y %)
+                        res_evol_aus = df_aus_filtered.groupby([df_aus_filtered['FECHA_AUS_DT'].dt.year.rename('AÑO'), df_aus_filtered['FECHA_AUS_DT'].dt.month.rename('MES')]).agg({'DIAS_AUS':'sum'}).reset_index()
+                        res_evol_aus = res_evol_aus.sort_values(['AÑO', 'MES'])
+                        res_evol_aus['MES_STR'] = res_evol_aus['MES'].map(meses_nombres) + " " + res_evol_aus['AÑO'].astype(str)
                         
-                        fig_evol_aus = px.line(res_evol_aus, x='MES_STR', y='DIAS_AUS', markers=True, text='DIAS_AUS')
-                        fig_evol_aus.update_traces(textposition="top center", marker=dict(size=7, color="#2563eb"), line=dict(color="#3b82f6", width=2))
-                        fig_evol_aus.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', xaxis_title="", yaxis_title="Días de Ausentismo", margin=dict(t=10, b=10), font=dict(color="#475569"))
+                        tasas_mes = []
+                        for index, row in res_evol_aus.iterrows():
+                            y = int(row['AÑO'])
+                            m = int(row['MES'])
+                            last_d = calendar.monthrange(y, m)[1]
+                            s_date = pd.to_datetime(f"{y}-{m:02d}-01")
+                            e_date = pd.to_datetime(f"{y}-{m:02d}-{last_d}")
+                            
+                            d_ini_m = len(df_filt_kpi[(df_filt_kpi['FECHA_ING_DT'] <= s_date) & ((df_filt_kpi['FECHA_EGR_DT'].isna()) | (df_filt_kpi['FECHA_EGR_DT'] >= s_date))])
+                            d_fin_m = len(df_filt_kpi[(df_filt_kpi['FECHA_ING_DT'] <= e_date) & ((df_filt_kpi['FECHA_EGR_DT'].isna()) | (df_filt_kpi['FECHA_EGR_DT'] > e_date))])
+                            d_prom_m = (d_ini_m + d_fin_m) / 2 if (d_ini_m + d_fin_m) > 0 else 1
+                            
+                            d_habiles = float(np.busday_count(s_date.date(), (e_date + pd.Timedelta(days=1)).date()))
+                            d_teoricos_m = d_prom_m * d_habiles
+                            
+                            tasa_m = (row['DIAS_AUS'] / d_teoricos_m * 100) if d_teoricos_m > 0 else 0
+                            tasas_mes.append(tasa_m)
+                    
+                        res_evol_aus['TASA_MES'] = tasas_mes
+                        # Etiqueta combinada: "150 (1.2%)"
+                        res_evol_aus['ETIQUETA'] = res_evol_aus['DIAS_AUS'].astype(int).astype(str) + " (" + res_evol_aus['TASA_MES'].round(1).astype(str) + "%)"
+                        
+                        fig_evol_aus = px.line(res_evol_aus, x='MES_STR', y='DIAS_AUS', markers=True, text='ETIQUETA')
+                        fig_evol_aus.update_traces(textposition="top center", textfont_size=11, marker=dict(size=7, color="#2563eb"), line=dict(color="#3b82f6", width=2), hovertemplate="<b>%{x}</b><br>Días: %{y}<br>Tasa Ausentismo: %{customdata:.1f}%<extra></extra>", customdata=res_evol_aus['TASA_MES'])
+                        
+                        # Se agrega un margen del 20% hacia arriba para que la etiqueta visual no se corte
+                        max_y = res_evol_aus['DIAS_AUS'].max() * 1.2 if not res_evol_aus.empty else 100
+                        fig_evol_aus.update_yaxes(range=[0, max_y])
+                        fig_evol_aus.update_layout(plot_bgcolor='#ffffff', paper_bgcolor='#ffffff', xaxis_title="", yaxis_title="Días de Ausentismo", margin=dict(t=15, b=10), font=dict(color="#475569"))
+                        
                         st.plotly_chart(fig_evol_aus, use_container_width=True)
 
                     with st.expander("Ver Registro Detallado de Novedades (Filtrado)"):
