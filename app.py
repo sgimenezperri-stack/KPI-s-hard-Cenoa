@@ -845,7 +845,7 @@ try:
                 st.info("No hay registros que coincidan con la selección de los gráficos.")
 
     # ---------------------------------------------------------------------
-    # TAB 3: AUSENTISMO Y NOVEDADES (FÓRMULA EXACTA Y DINÁMICA)
+    # TAB 3: AUSENTISMO Y NOVEDADES (DÍAS HÁBILES Y FÓRMULA EXACTA)
     # ---------------------------------------------------------------------
     with tab_ausentismo:
         st.markdown("<h3 style='font-size: 18px; font-weight: 600;'>Análisis de Ausentismo y Novedades</h3>", unsafe_allow_html=True)
@@ -893,8 +893,8 @@ try:
                     # ---------------------------------------------------------
                     # KPI GIGANTE: FÓRMULA DE TASA DE AUSENTISMO
                     # ---------------------------------------------------------
-                    # A. Denominador (Días Teóricos) ajustado dinámicamente si haces clic en una Empresa o Área
-                    df_filt_kpi = df_filt.copy()
+                    # A. Denominador (Días Teóricos) utilizando Maestra_Empleados (df_filt)
+                    df_filt_kpi = df_filt.copy() # df_filt es Maestra_Empleados
                     if sel_aus_emp: df_filt_kpi = df_filt_kpi[df_filt_kpi['EMPRESA'] == sel_aus_emp]
                     if sel_aus_area: df_filt_kpi = df_filt_kpi[df_filt_kpi['AREA'] == sel_aus_area]
                     
@@ -902,8 +902,12 @@ try:
                     dot_fin_aus = len(df_filt_kpi[(df_filt_kpi['FECHA_ING_DT'] <= fecha_corte) & ((df_filt_kpi['FECHA_EGR_DT'].isna()) | (df_filt_kpi['FECHA_EGR_DT'] > fecha_corte))])
                     dot_prom_aus = (dot_ini_aus + dot_fin_aus) / 2 if (dot_ini_aus + dot_fin_aus) > 0 else 1
                     
-                    dias_periodo_aus = (fecha_corte - fecha_inicio_periodo).days + 1
-                    dias_teoricos = dot_prom_aus * dias_periodo_aus
+                    # Cálculo de Días Hábiles (Lunes a Viernes)
+                    inicio_date = fecha_inicio_periodo.date()
+                    fin_date = (fecha_corte + pd.Timedelta(days=1)).date()
+                    dias_habiles_periodo = float(np.busday_count(inicio_date, fin_date))
+                    
+                    dias_teoricos = dot_prom_aus * dias_habiles_periodo
 
                     # B. Numerador (Días Perdidos)
                     total_dias = df_aus_filtered['DIAS_AUS'].sum() if 'DIAS_AUS' in df_aus_filtered.columns else 0
