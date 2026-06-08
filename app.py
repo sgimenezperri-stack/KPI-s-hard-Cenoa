@@ -144,23 +144,37 @@ def load_data_aus():
         df = pd.read_csv(CSV_URL_AUSENTISMO, dtype=str)
         df.columns = [str(c).strip().upper().replace('Ó','O').replace('Í','I').replace('Á','A') for c in df.columns]
         
-        if len(df.columns) >= 7:
-            df['EMPRESA'] = df.iloc[:, 2].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan)
-            df['LOCALIDAD'] = df.iloc[:, 3].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan)
-            df['AREA'] = df.iloc[:, 4].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan)
-            df['LICENCIA'] = df.iloc[:, 5].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], 'NO DECLARADO')
+        if len(df.columns) > 2:
+            df['EMPRESA'] = df.iloc[:, 2].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan) if len(df.columns) > 2 else 'NO DECLARADO'
+            df['LOCALIDAD'] = df.iloc[:, 3].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan) if len(df.columns) > 3 else 'NO DECLARADO'
+            df['AREA'] = df.iloc[:, 4].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], np.nan) if len(df.columns) > 4 else 'NO DECLARADO'
+            df['LICENCIA'] = df.iloc[:, 5].astype(str).str.strip().str.upper().replace(['NAN', 'NONE', ''], 'NO DECLARADO') if len(df.columns) > 5 else 'NO DECLARADO'
             
-            df['FECHA_AUS_DT'] = pd.to_datetime(df.iloc[:, 6], dayfirst=True, errors='coerce')
+            # Buscar fecha robustamente
+            col_fecha_obj = None
+            if len(df.columns) > 6:
+                col_fecha_obj = pd.to_datetime(df.iloc[:, 6], dayfirst=True, errors='coerce')
             
-            if df['FECHA_AUS_DT'].isna().all() and len(df.columns) >= 8:
-                df['FECHA_AUS_DT'] = pd.to_datetime(df.iloc[:, 7], dayfirst=True, errors='coerce')
+            if (col_fecha_obj is None or col_fecha_obj.isna().all()) and len(df.columns) > 7:
+                col_fecha_obj = pd.to_datetime(df.iloc[:, 7], dayfirst=True, errors='coerce')
+            
+            # Fallback a nombre de columna si los índices G o H están vacíos
+            if col_fecha_obj is None or col_fecha_obj.isna().all():
+                for col in df.columns:
+                    if 'FECHA' in col or 'INICIO' in col or 'DESDE' in col:
+                        col_fecha_obj = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
+                        if not col_fecha_obj.isna().all(): break
+                            
+            df['FECHA_AUS_DT'] = col_fecha_obj if col_fecha_obj is not None else pd.NaT
                 
+        # Días
         col_dias = next((c for c in df.columns if 'DIAS' in c or 'CANTIDAD' in c), None)
         if col_dias: 
             df['DIAS_AUS'] = pd.to_numeric(df[col_dias], errors='coerce').fillna(1)
         else: 
             df['DIAS_AUS'] = 1
             
+        # Nombre
         col_nombre = next((c for c in df.columns if 'NOMBRE' in c or 'COLAB' in c or 'APELLIDO' in c), None)
         if not col_nombre and len(df.columns) > 1: col_nombre = df.columns[1]
         df['NOMBRE_AUS'] = df[col_nombre] if col_nombre else 'DESCONOCIDO'
@@ -255,6 +269,14 @@ try:
         try: return st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=unique_key)
         except TypeError: return st.plotly_chart(fig, use_container_width=True)
 
+    if len(meses_sel) > 1:
+        fecha_inicio_historia = pd.to_datetime(f"{anio_analisis}-01-01")
+    else:
+        fecha_inicio_historia = pd.to_datetime(f"{anio_analisis - 1}-{mes_fin:02d}-01")
+        
+    rango_fechas_historia = pd.date_range(start=fecha_inicio_historia, end=fecha_corte, freq='ME')
+    historia_datos = [{'Fecha': f, 'Dotación': len(df_filt[(df_filt['FECHA_ING_DT'] <= f) & ((df_filt['FECHA_EGR_DT'].isna()) | (df_filt['FECHA_EGR_DT'] > f))])} for f in rango_fechas_historia]
+    df_historia = pd.DataFrame(historia_datos) if historia_datos else pd.DataFrame()
     if not df_historia.empty:
         df_historia['Mes_Esp'] = df_historia['Fecha'].dt.month.map(meses_nombres) + " " + df_historia['Fecha'].dt.year.astype(str)
 
@@ -328,7 +350,7 @@ try:
             sel_click_area = pt_a.get('label', pt_a.get('x'))
         if 'k_ant' in st.session_state and isinstance(st.session_state.k_ant, dict) and st.session_state.k_ant.get('selection', {}).get('points'): 
             sel_click_antiguedad = st.session_state.k_ant['selection']['points'][0].get('x')
-        if 'k_lid' in st.session_state substitute isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): 
+        if 'k_lid' in st.session_state and isinstance(st.session_state.k_lid, dict) and st.session_state.k_lid.get('selection', {}).get('points'): 
             sel_click_lider = st.session_state.k_lid['selection']['points'][0].get('y')
         if 'k_cat' in st.session_state and isinstance(st.session_state.k_cat, dict) and st.session_state.k_cat.get('selection', {}).get('points'): 
             sel_click_categoria = st.session_state.k_cat['selection']['points'][0].get('y')
@@ -538,6 +560,7 @@ try:
                     (df_mov['FECHA_MOV_DT'].dt.month.isin(meses_sel))
                 ].copy()
                 
+                # REQUERIMIENTO: Filtros globales aplican a Movimientos Internos
                 if 'NOMBRE' in df_mov_periodo.columns and col_nombre and col_nombre in df_filt.columns:
                     df_mov_periodo = df_mov_periodo[df_mov_periodo['NOMBRE'].isin(df_filt[col_nombre])]
                 
@@ -612,7 +635,7 @@ try:
                         
                         if sel_click_tipo_mov:
                             df_show_mov = df_show_mov[df_show_mov['TIPO_MOV'] == sel_click_tipo_mov]
-                            st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro de torta activo:</b> Mostrando solo {sel_click_tipo_mov}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='font-size:13px; color:#2563eb; margin-bottom:10px;'><b>Filtro activo:</b> Mostrando solo {sel_click_tipo_mov}</div>", unsafe_allow_html=True)
                             
                         st.dataframe(df_show_mov.sort_values(by='FECHA_MOV_DT', ascending=False)[cols_mov], use_container_width=True)
                 else:
@@ -994,7 +1017,7 @@ try:
                             fig_area_aus = px.bar(res_area_aus, x='DIAS', y='AREA', orientation='h', text='DIAS', color_discrete_sequence=[paleta_neutra[1]])
                             fig_area_aus.update_traces(hovertemplate="<b>%{y}</b><br>Días: %{text}<extra></extra>")
                             fig_area_aus.update_layout(xaxis_title="Días Perdidos", yaxis_title="", plot_bgcolor='#ffffff', font=dict(color="#475569"), margin=dict(t=10))
-                            st.plotly_chart(fig_area_aus, use_container_width=True)
+                            draw_safe_interactive_chart(fig_area_aus, "k_aus_area")
                         else:
                             st.info("Columna de Área no detectada.")
                             
@@ -1051,7 +1074,6 @@ try:
                     with col_rank_aus:
                         st.markdown("<h4 style='font-size: 15px; font-weight: 600;'>Top 10 Colaboradores con Mayor Ausencia</h4>", unsafe_allow_html=True)
                         if not df_aus_filtered.empty and 'NOMBRE_AUS' in df_aus_filtered.columns:
-                            # Agrupar por empleado y ordenar de forma descendente los primeros 10
                             res_top_empleados = df_aus_filtered.groupby('NOMBRE_AUS')['DIAS_AUS'].sum().reset_index()
                             res_top_empleados = res_top_empleados.sort_values(by='DIAS_AUS', ascending=False).head(10)
                             
